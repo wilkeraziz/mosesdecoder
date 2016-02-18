@@ -74,10 +74,14 @@ public:
 
   // 1st evaluate method. Called during loading of phrase table.
   void EvaluateInIsolation(const Phrase &source, const std::vector<FeatureFunction*> &ffs);
+  // waziz: temporary bypass
+  void EvaluateInIsolation(const InputPath &inputPath, const std::vector<FeatureFunction*> &ffs);
 
   // as above, score with ALL FFs
   // Used only for OOV processing. Doesn't have a phrase table connect with it
   void EvaluateInIsolation(const Phrase &source);
+  // waziz: temporary bypass
+  void EvaluateInIsolation(const InputPath &inputPath);
 
   // 'inputPath' is guaranteed to be the raw substring from the input. No factors were added or taken away
   void EvaluateWithSourceContext(const InputType &input, const InputPath &inputPath);

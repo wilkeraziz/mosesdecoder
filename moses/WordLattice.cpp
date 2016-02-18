@@ -103,10 +103,21 @@ InitializeFromPCNDataType
           }
         }
 
+        // TODO: log transform should be an option!
         float score = std::max(static_cast<float>(log(*probsIterator)), LOWEST_SCORE);
         ScorePair &scorePair = data[i][j].second;
         scorePair.denseScores.push_back(score);
       }
+      
+      // copy sparse features
+      std::map<std::string, float>::const_iterator kvIterator;
+      for(kvIterator = alt.m_sparseFeatures.begin(); kvIterator != alt.m_sparseFeatures.end(); ++kvIterator) {
+        // crucial: a fname must be obtained by invoking GetFName
+        // otherwise the StringPiece stored in sparseScores will point to junk as soon as Read ends
+        // most likely this will produce random results quite silently
+        data[i][j].second.PlusEquals(GetFName(kvIterator->first), kvIterator->second);
+      }
+
       //store 'real' word count in last feature if we have one more weight than we do arc scores and not epsilon
       if (addRealWordCount) {
         //only add count if not epsilon

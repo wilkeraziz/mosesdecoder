@@ -33,9 +33,26 @@ protected:
   bool ReadFormat1(std::istream&,const std::vector<FactorType>& factorOrder);
   void String2Word(const std::string& s,Word& w,const std::vector<FactorType>& factorOrder);
 
+  // ScorePair objects do not own the strings the name sparse faetures
+  // instead they use StringPiece objects which will silently produce inconsistent outcomes
+  // when the underlying std::string objects are cleaned
+  // (it happens for instance when we convert a PCN data structure to a ConfusionNetwork or WordLattice
+  // Solution: we need to maintain a vocabulary of sparse features
+  // and sparse features should be "registered" before added to ScorePair
+  // see GetFName
+  std::set<std::string> m_fnames;  
+
 public:
   ConfusionNet();
   virtual ~ConfusionNet();
+
+  /**
+   * Registers a feature name and returns a StringPiece
+   */
+  inline StringPiece GetFName(const std::string& name) {
+      std::pair<std::set<std::string>::iterator, bool> result = m_fnames.insert(name);
+      return StringPiece(*(result.first));
+  }
 
   ConfusionNet(Sentence const& s);
 
@@ -61,6 +78,7 @@ public:
   }
   void Clear() {
     data.clear();
+    m_fnames.clear();
   }
 
   bool ReadF(std::istream&,const std::vector<FactorType>& factorOrder,int format=0);

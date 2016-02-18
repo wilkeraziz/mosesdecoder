@@ -149,6 +149,8 @@ void DecodeStepGeneration::Process(const TranslationOption &inputPartialTranslOp
 
     outPhrase.MergeFactors(genPhrase, m_newOutputFactors);
     outPhrase.EvaluateInIsolation(inputPath.GetPhrase(), m_featuresToApply);
+    // waziz: temporary bypass
+    outPhrase.EvaluateInIsolation(inputPath, m_featuresToApply);
 
     const WordsRange &sourceWordsRange = inputPartialTranslOpt.GetSourceWordsRange();
 

@@ -126,6 +126,12 @@ void TargetPhrase::EvaluateInIsolation(const Phrase &source)
   EvaluateInIsolation(source, ffs);
 }
 
+void TargetPhrase::EvaluateInIsolation(const InputPath &inputPath)
+{
+  const std::vector<FeatureFunction*> &ffs = FeatureFunction::GetFeatureFunctions();
+  EvaluateInIsolation(inputPath, ffs);
+}
+
 void TargetPhrase::EvaluateInIsolation(const Phrase &source, const std::vector<FeatureFunction*> &ffs)
 {
   if (ffs.size()) {
@@ -135,6 +141,24 @@ void TargetPhrase::EvaluateInIsolation(const Phrase &source, const std::vector<F
       const FeatureFunction &ff = *ffs[i];
       if (! staticData.IsFeatureFunctionIgnored( ff )) {
         ff.EvaluateInIsolation(source, *this, m_scoreBreakdown, futureScoreBreakdown);
+      }
+    }
+
+    float weightedScore = m_scoreBreakdown.GetWeightedScore();
+    m_futureScore += futureScoreBreakdown.GetWeightedScore();
+    m_fullScore = weightedScore + m_futureScore;
+  }
+}
+
+void TargetPhrase::EvaluateInIsolation(const InputPath &inputPath, const std::vector<FeatureFunction*> &ffs)
+{
+  if (ffs.size()) {
+    const StaticData &staticData = StaticData::Instance();
+    ScoreComponentCollection futureScoreBreakdown;
+    for (size_t i = 0; i < ffs.size(); ++i) {
+      const FeatureFunction &ff = *ffs[i];
+      if (! staticData.IsFeatureFunctionIgnored( ff )) {
+        ff.EvaluateInIsolation(inputPath, *this, m_scoreBreakdown, futureScoreBreakdown);
       }
     }
 

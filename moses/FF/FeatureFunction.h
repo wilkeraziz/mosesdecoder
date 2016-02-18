@@ -120,6 +120,14 @@ public:
                                    , const TargetPhrase &targetPhrase
                                    , ScoreComponentCollection &scoreBreakdown
                                    , ScoreComponentCollection &estimatedFutureScore) const = 0;
+  
+  // waziz: This is a temporary bypass!!!
+  virtual void EvaluateInIsolation(const InputPath &inpuPath
+                                   , const TargetPhrase &targetPhrase
+                                   , ScoreComponentCollection &scoreBreakdown
+                                   , ScoreComponentCollection &estimatedFutureScore) const
+  {
+  }
 
   // override this method if you want to change the input before decoding
   virtual void ChangeSource(InputType *&input) const {

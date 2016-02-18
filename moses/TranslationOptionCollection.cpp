@@ -273,6 +273,8 @@ void TranslationOptionCollection::ProcessOneUnknownWord(const InputPath &inputPa
   WordsRange range(sourcePos, sourcePos + length - 1);
 
   targetPhrase.EvaluateInIsolation(sourcePhrase);
+  // waziz: temporary bypass
+  targetPhrase.EvaluateInIsolation(inputPath);
 
   TranslationOption *transOpt = new TranslationOption(range, targetPhrase);
   transOpt->SetInputPath(inputPath);

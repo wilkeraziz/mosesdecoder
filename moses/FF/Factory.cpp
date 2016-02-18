@@ -62,6 +62,10 @@
 #include "SkeletonChangeInput.h"
 #include "moses/TranslationModel/SkeletonPT.h"
 #include "moses/Syntax/RuleTableFF.h"
+#include "moses/FF/KTau.h"
+#include "moses/FF/LatticeKTauSimple.h"
+#include "moses/FF/LatticeKTau.h"
+#include "moses/FF/SourcePermutationLM.h"
 
 #ifdef HAVE_VW
 #include "moses/FF/VW/VW.h"
@@ -243,6 +247,11 @@ FeatureRegistry::FeatureRegistry()
   MOSES_FNAME(SkeletonChangeInput);
   MOSES_FNAME(SkeletonTranslationOptionListFeature);
   MOSES_FNAME(SkeletonPT);
+
+  MOSES_FNAME(KTau);
+  MOSES_FNAME(LatticeKTauSimple);
+  MOSES_FNAME(LatticeKTau);
+  MOSES_FNAME(SourcePermutationLM);
 
 #ifdef HAVE_VW
   MOSES_FNAME(VW);
