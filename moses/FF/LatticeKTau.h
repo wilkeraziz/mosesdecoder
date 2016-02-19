@@ -86,7 +86,7 @@ private:
 class LatticeKTau : public StatefulFeatureFunction
 {
 private:
-    std::size_t m_seg; // segment being translated (necessary in referring to table of permutations and expectations)
+    //std::size_t m_seg; // segment being translated (necessary in referring to table of permutations and expectations)
     // selects a heuristic to unfold word alignments, that is,  to permute the input in target word-order)
     // this heuristic accepts 3 values:
     //  'M' (for montone) means skip it altogether, that is, ignore word alignment information and assume a monotone mapping between input and output
@@ -110,7 +110,7 @@ public:
   
   inline const FFState* EmptyHypothesisState(const InputType &input) const
   {
-      return new LatticeKTauState(WordsBitmap(GetInputLength()), -1, -1);
+      return new LatticeKTauState(WordsBitmap(GetInputLength(input.GetTranslationId())), -1, -1);
   }
   
   // we have nothing to do here
@@ -191,18 +191,19 @@ public:
 
   void SetParameter(const std::string& key, const std::string& value);
   
-  void InitializeForInput(InputType const& source);
+  void InitializeForInput(InputType const& source); 
+  // TODO - CHECK: Learn more about the contract in this case. I think we need to make sure ourselves that this is thread-safe... which makes me wonder why this method is not const. I agree it does not make sense to have an "initialization" method be const, but then we should have a clearer contract.
 
 private:
 
-    inline std::size_t GetInputId() const
-    {
-        return m_seg;
-    }
+    //inline std::size_t GetInputId() const
+    //{
+    //    return m_seg;
+    //}
 
-    inline std::size_t GetInputLength() const 
+    inline std::size_t GetInputLength(const std::size_t sid) const 
     {
-        return m_lengths[GetInputId()];
+        return m_lengths[sid];
     }  
     
     /*
@@ -223,13 +224,13 @@ private:
      *  GetExpectation(MapInputPosition(i), MapInputPosition(j)) 
      * where MapInputPosition abstracts away from the type of input (original vs predicted order).
      */
-    double GetExpectation(const std::size_t left, const std::size_t right) const;
+    double GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const;
 
     std::vector<std::size_t> GetInputPositions(const InputPath &inputPath) const;
     std::vector<std::size_t> GetPermutation(const std::vector<std::size_t> &input, const AlignmentInfo& ainfo) const;
     
 
-    float ComputeExpectation(std::vector<std::size_t> &positions) const;
+    float ComputeExpectation(const std::size_t sid, std::vector<std::size_t> &positions) const;
     
     /*
      * This method abstracts away the position of the feature "External KTau" in the vector of score components.

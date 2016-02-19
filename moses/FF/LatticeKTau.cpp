@@ -136,10 +136,10 @@ void LatticeKTau::ReadExpectations(const std::string& path)
  * HELPER
  */
 
-double LatticeKTau::GetExpectation(const std::size_t left, const std::size_t right) const
+double LatticeKTau::GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const
 {
-    std::map< std::size_t, std::map<std::size_t, double> >::const_iterator it = m_taus[GetInputId()].find(left);
-    if (it == m_taus[GetInputId()].end()) 
+    std::map< std::size_t, std::map<std::size_t, double> >::const_iterator it = m_taus[sid].find(left);
+    if (it == m_taus[sid].end()) 
         return 0.0;
     std::map<std::size_t, double>::const_iterator it2 = it->second.find(right);
     if (it2 == it->second.end())
@@ -257,21 +257,21 @@ std::vector<std::size_t> LatticeKTau::GetPermutation(const std::vector<std::size
   
 void LatticeKTau::InitializeForInput(InputType const& source) 
 {
-    m_seg = source.GetTranslationId();  // the sequential id of the segment being translated
+    const std::size_t sid = source.GetTranslationId();  // the sequential id of the segment being translated
     // sanity checks
-    UTIL_THROW_IF2(GetInputId() >= m_taus.size(),
+    UTIL_THROW_IF2(sid >= m_taus.size(),
           "LatticeKTau::GetExpectation: it seems like you are missing entries in the table of skip-bigram expectations.");
 }
 
 
-float LatticeKTau::ComputeExpectation(std::vector<std::size_t> &positions) const
+float LatticeKTau::ComputeExpectation(const std::size_t sid, std::vector<std::size_t> &positions) const
 {
     float expectation = 0.0;
     for (std::size_t i = 0; i < positions.size() - 1; ++i) {
         const std::size_t left = positions[i];
         for (std::size_t j = i + 1; j < positions.size(); ++j) {
             const std::size_t right = positions[j];
-            expectation += GetExpectation(left, right);
+            expectation += GetExpectation(sid, left, right);
         }
     }
     return expectation;
@@ -285,16 +285,17 @@ void LatticeKTau::EvaluateWithSourceContext(const InputType &input
     , ScoreComponentCollection &scoreBreakdown
     , ScoreComponentCollection *estimatedFutureScore) const
 {
+    const std::size_t sid = input.GetTranslationId();
     std::vector<float> scores(GetNumScoreComponents(), 0.0);
     
     // score phrases wrt how they permute the input (this uses the lattice input and ignores word alignment)
     std::vector<std::size_t> positions(GetInputPositions(inputPath));
-    SetKTauInternalToPhrase(scores, ComputeExpectation(positions));
+    SetKTauInternalToPhrase(scores, ComputeExpectation(sid, positions));
     
     // score phrases wrt how they permute the input given word alignment information (this rearranges the lattice input in target word order)
     // unaligned words behave according to the option of unfold heuristic
     std::vector<std::size_t> permutation(GetPermutation(positions, targetPhrase.GetAlignTerm()));
-    SetKTauInternalToPhraseGivenWA(scores, ComputeExpectation(permutation));
+    SetKTauInternalToPhraseGivenWA(scores, ComputeExpectation(sid, permutation));
 
     // compute distortion cost internal to phrase (this uses the lattice input and ignores word alignment)
     SetInternalDistortionCost(scores, ComputeDistortionCost(positions));
@@ -314,6 +315,7 @@ void LatticeKTau::EvaluateWithSourceContext(const InputType &input
 FFState* LatticeKTau::EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
       ScoreComponentCollection* accumulator) const
 {
+    const std::size_t sid = hypo.GetInput().GetTranslationId();
     // here we need to score the hypothesis wrt yet untranslated words
     std::vector<float> scores(GetNumScoreComponents(), 0.0);
     float expectation = 0.0;
@@ -338,7 +340,7 @@ FFState* LatticeKTau::EvaluateWhenApplied(const Hypothesis& hypo, const FFState*
             continue;
         for (std::size_t i = 0; i < positions.size(); ++i) { 
             const std::size_t left = positions[i];
-            expectation += GetExpectation(left, right);
+            expectation += GetExpectation(sid, left, right);
         }
     }
     
