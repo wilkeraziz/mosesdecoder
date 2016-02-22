@@ -67,20 +67,17 @@ public:
       return state;
   }
   
-  // we have nothing to do here
-  void EvaluateInIsolation(const Phrase &source
-                           , const TargetPhrase &targetPhrase
-                           , ScoreComponentCollection &scoreBreakdown
-                           , ScoreComponentCollection &estimatedFutureScore) const
-  {
-  }
-  
   void EvaluateInIsolation(const InputPath &inputPath
                            , const TargetPhrase &targetPhrase
                            , ScoreComponentCollection &scoreBreakdown
                            , ScoreComponentCollection &estimatedFutureScore) const
   {
   }
+  
+  void EvaluateInIsolation(const Phrase &source
+                           , const TargetPhrase &targetPhrase
+                           , ScoreComponentCollection &scoreBreakdown
+                           , ScoreComponentCollection &estimatedFutureScore) const;
 
   void EvaluateTranslationOptionListWithSourceContext(const InputType &input
       , const TranslationOptionList &translationOptionList) const
@@ -100,7 +97,9 @@ public:
                                  , const TargetPhrase &targetPhrase
                                  , const StackVec *stackVec
                                  , ScoreComponentCollection &scoreBreakdown
-                                 , ScoreComponentCollection *estimatedFutureScore = NULL) const;
+                                 , ScoreComponentCollection *estimatedFutureScore = NULL) const
+  {
+  }
 
   FFState* EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
           ScoreComponentCollection* accumulator) const;
@@ -123,6 +122,12 @@ private:
             const std::size_t end, 
             kenlm::ngram::State in_state, 
             kenlm::ngram::State *out_state) const;
+
+    /**
+     * Returns the KenLM score associated with complete n-grams assuming a null context state.
+     * Additionally, computes an estimate of the outside score (that of the incomplete n-grams).
+     */
+    float KenLMScore(const Phrase& phrase, float &outside) const;
         
 };
 

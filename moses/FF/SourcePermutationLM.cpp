@@ -81,25 +81,41 @@ float SourcePermutationLM::KenLMScore(const Phrase& phrase,
     return score;
 }
 
-void SourcePermutationLM::EvaluateWithSourceContext(const InputType &input
-    , const InputPath &inputPath
-    , const TargetPhrase &targetPhrase
-    , const StackVec *stackVec
-    , ScoreComponentCollection &scoreBreakdown
-    , ScoreComponentCollection *estimatedFutureScore) const
+
+float SourcePermutationLM::KenLMScore(const Phrase& phrase, 
+        float &outside) const
 {
-    const Phrase& f_phrase = inputPath.GetPhrase();
-    if (f_phrase.GetSize() < m_model->Order()) { // too short a phrase (no complete n-grams to be scored)
-        return;
+    kenlm::ngram::State in_state = m_model->NullContextState();
+    kenlm::ngram::State out_state;
+    kenlm::ngram::State *state0 = &in_state;
+    kenlm::ngram::State *state1 = &out_state;
+    const std::size_t ctxt_size = m_model->Order() - 1;
+    outside = 0.0;
+    float score = 0.0;
+    for (std::size_t i = 0; i < phrase.GetSize(); ++i) {   
+        float partial = m_model->Score(*state0, 
+                m_model->GetVocabulary().Index(phrase.GetWord(i).GetString(0)), 
+                *state1);
+        std::swap(state0, state1);
+        if (i >= ctxt_size) {
+            score += partial;
+        } else {
+            outside += partial;
+        }
     }
-    const std::size_t first = m_model->Order() - 1;
-    // update state to account for n-1 words in the prefix
-    kenlm::ngram::State state;
-    KenLMScore(f_phrase, 0, first, m_model->NullContextState(), &state);
-    // score complete ngrams
-    float score = KenLMScore(f_phrase, first, f_phrase.GetSize(), state, &state);
-    // transform score and add to vector
-    scoreBreakdown.PlusEquals(this, TransformLMScore(score));
+    return score;
+}
+  
+void SourcePermutationLM::EvaluateInIsolation(const Phrase &source
+                       , const TargetPhrase &targetPhrase
+                       , ScoreComponentCollection &scoreBreakdown
+                       , ScoreComponentCollection &estimatedFutureScore) const
+{
+    float outside = 0.0;
+    float score = KenLMScore(source, outside);
+    // transform scores and add to vector
+    scoreBreakdown.Assign(this, TransformLMScore(score));
+    estimatedFutureScore.Assign(this, TransformLMScore(outside));
 }
 
 
