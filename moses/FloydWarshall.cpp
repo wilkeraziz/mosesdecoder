@@ -4,8 +4,6 @@
 
 #define MAX_DIST (INT_MAX / 2)
 
-//#include "FloydWarshall.h"
-
 using namespace std;
 
 // All-pairs shortest path algorithm
@@ -32,5 +30,6 @@ void floyd_warshall(const std::vector<std::vector<bool> >& edges, std::vector<st
       for (size_t j=0; j<num_edges; ++j)
         if (dist[i][j] > (dist[i][k] + dist[k][j]))
           dist[i][j] = dist[i][k] + dist[k][j];
+
 }
 

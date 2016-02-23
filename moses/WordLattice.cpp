@@ -8,6 +8,13 @@
 #include "TranslationOptionCollectionConfusionNet.h"
 #include "moses/FF/InputFeature.h"
 
+
+// In this file, error messages were produced whenever the distance between two nodes was greater than 99999 (a maximum distance),
+// however, in FloydWarshall.cpp a maximum distance is set as a function of INT_MAX, thus we use the same definition here.
+// Error messages are now produced depending on MAX_DIST (instead of a hard-coded and inconsistent 99999).
+// Perhaps should we define such maximum distance in FloydWarshall.h instead of redefining it here?
+#define MAX_DIST (INT_MAX / 2)
+
 namespace Moses
 {
 WordLattice::WordLattice()
@@ -146,7 +153,7 @@ InitializeFromPCNDataType
       for (size_t i=0; i<edges.size(); ++i) {
         for (size_t j=0; j<edges.size(); ++j) {
           int d = distances[i][j];
-          if (d > 99999) {
+          if (d > MAX_DIST) {
             d=-1;
           }
           TRACE_ERR("\t" << d);
@@ -198,7 +205,7 @@ int WordLattice::ComputeDistortionDistance(const WordsRange& prev, const WordsRa
     result = distances[0][current.GetStartPos()];
 
     VERBOSE(4, "Word lattice distortion: initial step from 0 to " << current.GetStartPos() << " of length " << result << "\n");
-    if (result < 0 || result > 99999) {
+    if (result < 0 || result > MAX_DIST) {
       TRACE_ERR("prev: " << prev << "\ncurrent: " << current << "\n");
       TRACE_ERR("A: got a weird distance from 0 to " << (current.GetStartPos()+1) << " of " << result << "\n");
     }
@@ -206,7 +213,7 @@ int WordLattice::ComputeDistortionDistance(const WordsRange& prev, const WordsRa
     result = distances[current.GetStartPos()][prev.GetEndPos() + 1];
 
     VERBOSE(4, "Word lattice distortion: backward step from " << (prev.GetEndPos()+1) << " to " << current.GetStartPos() << " of length " << result << "\n");
-    if (result < 0 || result > 99999) {
+    if (result < 0 || result > MAX_DIST) {
       TRACE_ERR("prev: " << prev << "\ncurrent: " << current << "\n");
       TRACE_ERR("B: got a weird distance from "<< current.GetStartPos() << " to " << prev.GetEndPos()+1 << " of " << result << "\n");
     }
@@ -214,7 +221,7 @@ int WordLattice::ComputeDistortionDistance(const WordsRange& prev, const WordsRa
     result = distances[prev.GetEndPos() + 1][current.GetStartPos()];
 
     VERBOSE(4, "Word lattice distortion: forward step from " << (prev.GetEndPos()+1) << " to " << current.GetStartPos() << " of length " << result << "\n");
-    if (result < 0 || result > 99999) {
+    if (result < 0 || result > MAX_DIST) {
       TRACE_ERR("prev: " << prev << "\ncurrent: " << current << "\n");
       TRACE_ERR("C: got a weird distance from "<< prev.GetEndPos()+1 << " to " << current.GetStartPos() << " of " << result << "\n");
     }
