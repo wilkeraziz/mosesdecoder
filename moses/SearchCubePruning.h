@@ -30,6 +30,28 @@ protected:
   bool CheckDistortion(const WordsBitmap &bitmap, const WordsRange &range) const;
 
   void PrintBitmapContainerGraph();
+    
+  inline bool WordLatticeCheckPathToStartPosition(const WordsBitmap &hypoBitmap, const std::size_t startPos) const
+  {
+    // first question: is there a path from the closest translated word to the left
+    // of the hypothesized extension to the start of the hypothesized extension?
+    // long version: is there anything to our left? is it farther left than where we're starting anyway? can we get to it?
+    // closestLeft is exclusive: a value of 3 means 2 is covered, our arc is currently ENDING at 3 and can start at 3 implicitly
+    std::size_t closestLeft = hypoBitmap.GetEdgeToTheLeftOf(startPos);
+    return !(closestLeft != 0 && closestLeft != startPos && !m_source.CanIGetFromAToB(closestLeft, startPos));
+  }
+
+  inline bool WordLatticeCheckRange(const WordsRange& extRange) const
+  {
+    return m_source.IsCoveragePossible(extRange);
+  }
+
+  inline bool WordLatticeCheckPathFromEndPosition(const WordsBitmap &hypoBitmap, const std::size_t endPos) const
+  {
+    std::size_t closestRight = hypoBitmap.GetEdgeToTheRightOf(endPos);
+    return !(closestRight != endPos && ((closestRight + 1) < m_source.GetSize()) && !m_source.CanIGetFromAToB(endPos + 1, closestRight + 1));
+  }
+
 
 public:
   SearchCubePruning(Manager& manager, const InputType &source, const TranslationOptionCollection &transOptColl);

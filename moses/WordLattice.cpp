@@ -233,7 +233,7 @@ int WordLattice::ComputeDistortionDistance(const WordsRange& prev, const WordsRa
 bool WordLattice::CanIGetFromAToB(size_t start, size_t end) const
 {
   //  std::cerr << "CanIgetFromAToB(" << start << "," << end << ")=" << distances[start][end] << std::endl;
-  return distances[start][end] < 100000;
+  return distances[start][end] < MAX_DIST;
 }
 
 TranslationOptionCollection*

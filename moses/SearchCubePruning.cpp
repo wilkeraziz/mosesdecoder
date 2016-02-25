@@ -165,6 +165,7 @@ void SearchCubePruning::Decode()
 
 void SearchCubePruning::CreateForwardTodos(HypothesisStackCubePruning &stack)
 {
+  const bool isWordLattice = StaticData::Instance().GetInputType() == WordLatticeInput;
   const _BMType &bitmapAccessor = stack.GetBitmapAccessor();
   _BMType::const_iterator iterAccessor;
   size_t size = m_source.GetSize();
@@ -191,24 +192,36 @@ void SearchCubePruning::CreateForwardTodos(HypothesisStackCubePruning &stack)
 
       // not yet covered
       WordsRange applyRange(startPos, startPos);
-      if (CheckDistortion(bitmap, applyRange)) {
-        // apply range
-        CreateForwardTodos(bitmap, applyRange, bitmapContainer);
-      }
+      
+      // if we have word lattice input, then, unless there is a path from closestLeft to startPos, we can't hypothesize extensions from startPos
+      if (!isWordLattice || WordLatticeCheckPathToStartPosition(bitmap, startPos)) {  
+          if (CheckDistortion(bitmap, applyRange)) {
+            // apply range
+            CreateForwardTodos(bitmap, applyRange, bitmapContainer);
+          }
 
-      size_t maxSize = size - startPos;
-      size_t maxSizePhrase = StaticData::Instance().GetMaxPhraseLength();
-      maxSize = std::min(maxSize, maxSizePhrase);
+          size_t maxSize = size - startPos;
+          size_t maxSizePhrase = StaticData::Instance().GetMaxPhraseLength();
+          maxSize = std::min(maxSize, maxSizePhrase);
 
-      for (endPos = startPos+1; endPos < startPos + maxSize; endPos++) {
-        if (bitmap.GetValue(endPos))
-          break;
+          for (endPos = startPos+1; endPos < startPos + maxSize; endPos++) {
+            if (bitmap.GetValue(endPos))
+              break;
 
-        WordsRange applyRange(startPos, endPos);
-        if (CheckDistortion(bitmap, applyRange)) {
-          // apply range
-          CreateForwardTodos(bitmap, applyRange, bitmapContainer);
-        }
+            // if we have word lattice input, then, unless there is a path from endPos to closestRight, we can't hypothesize extensions to endPos
+            if (isWordLattice && !WordLatticeCheckPathFromEndPosition(bitmap, endPos))
+                continue;
+
+            WordsRange applyRange(startPos, endPos);
+
+            // in addition to checking constraints/limits on distortion
+            // and particularly in the case of lattice input,
+            // we need to check whether we can hypothesise translations covering paths from startPos to endPos
+            if ((!isWordLattice || WordLatticeCheckRange(applyRange)) && CheckDistortion(bitmap, applyRange)) {
+              // apply range
+              CreateForwardTodos(bitmap, applyRange, bitmapContainer);
+            }
+          }
       }
     }
   }
