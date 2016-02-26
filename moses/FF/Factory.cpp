@@ -66,6 +66,8 @@
 #include "moses/FF/LatticeKTauSimple.h"
 #include "moses/FF/LatticeKTau.h"
 #include "moses/FF/SourcePermutationLM.h"
+#include "moses/FF/PermutationDistortion.h"
+#include "moses/FF/PermutationExpectedKendallTau.h"
 
 #ifdef HAVE_VW
 #include "moses/FF/VW/VW.h"
@@ -252,6 +254,8 @@ FeatureRegistry::FeatureRegistry()
   MOSES_FNAME(LatticeKTauSimple);
   MOSES_FNAME(LatticeKTau);
   MOSES_FNAME(SourcePermutationLM);
+  MOSES_FNAME(PermutationDistortion);
+  MOSES_FNAME(PermutationExpectedKendallTau);
 
 #ifdef HAVE_VW
   MOSES_FNAME(VW);

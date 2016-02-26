@@ -8,19 +8,16 @@
 #include "moses/Hypothesis.h"
 #include "moses/ChartHypothesis.h"
 #include "moses/FF/FFState.h"
+#include "moses/FF/LatticePermutationFeatures.h"
 
 namespace Moses
 {
     
-class LatticeKTauState : public FFState
+class PermutationExpectedKendallTauState : public FFState
 {
 public:
-    LatticeKTauState(const WordsBitmap& coverage, 
-            const int last_covered,
-            const int last_covered_given_wa): 
-        m_coverage(coverage), 
-        m_last_covered(last_covered),
-        m_last_covered_given_wa(last_covered_given_wa) 
+    PermutationExpectedKendallTauState(const WordsBitmap& coverage):
+        m_coverage(coverage)
     {}
 
     inline const WordsBitmap& GetCoverage() const 
@@ -28,34 +25,14 @@ public:
         return m_coverage;
     }
 
-    inline const int GetLastCovered() const
-    {
-        return m_last_covered;
-    }
-
-    inline const int GetLastCoveredGivenWA() const
-    {
-        return m_last_covered_given_wa;
-    }
-
     inline int Compare(const FFState& other) const
     {
-        const LatticeKTauState& rhs = dynamic_cast<const LatticeKTauState&>(other);
-        if (m_last_covered == rhs.GetLastCovered()) {
-            if (m_last_covered_given_wa == rhs.GetLastCoveredGivenWA()) {
-                return m_coverage.Compare(rhs.GetCoverage());
-            } else {
-                return (m_last_covered_given_wa < rhs.GetLastCoveredGivenWA())? -1 : 1;
-            }
-        } else {
-            return (m_last_covered < rhs.GetLastCovered())? -1 : 1;
-        }
+        const PermutationExpectedKendallTauState& rhs = dynamic_cast<const PermutationExpectedKendallTauState&>(other);
+        return m_coverage.Compare(rhs.GetCoverage());
     }
     
 private:
-    WordsBitmap m_coverage;
-    int m_last_covered;
-    int m_last_covered_given_wa;
+    const WordsBitmap m_coverage;
 };
 
 
@@ -78,12 +55,8 @@ private:
  *      1. External KTau
  *      2. Internal KTau
  *      3. Internal KTau Given Word Alignment
- *      4. External Distortion Cost
- *      5. External Distortion Cost Given Word Alignment
- *      6. Internal Distortion Cost
- *      7. Internal Distortion Cost Given Word Alignment
  */
-class LatticeKTau : public StatefulFeatureFunction
+class PermutationExpectedKendallTau : public StatefulFeatureFunction
 {
 private:
     //std::size_t m_seg; // segment being translated (necessary in referring to table of permutations and expectations)
@@ -93,14 +66,17 @@ private:
     //  'L' (for left) means consult word alignment information to obtain target word-order and attaches unaligned words to its left
     //  'R' (for right) similar to 'L', but looks for aligned words to the right of the unaligned ones
     char m_unfold_heuristic; 
+    bool m_internal_scoring;
+    bool m_wa_scoring;
+
     std::string m_table_path; // path to table of expectations
+    std::string m_length_table_path; // path to table of lengths
     std::vector< std::map< std::size_t, std::map<std::size_t, double> > > m_taus; // table of expectations
     std::vector<std::size_t> m_lengths; // the length of each original source
     std::string m_sstate_fname;  // name of arc feature representing the state in s (original source)
-    std::string m_ktau_fname;  // TODELETE 
 
 public:
-  LatticeKTau(const std::string &line);
+  PermutationExpectedKendallTau(const std::string &line);
 
   bool IsUseable(const FactorMask &mask) const {
     return true;
@@ -110,7 +86,7 @@ public:
   
   inline const FFState* EmptyHypothesisState(const InputType &input) const
   {
-      return new LatticeKTauState(WordsBitmap(GetInputLength(input.GetTranslationId())), -1, -1);
+      return new PermutationExpectedKendallTauState(WordsBitmap(GetInputLength(input.GetTranslationId())));
   }
   
   // we have nothing to do here
@@ -186,7 +162,7 @@ public:
   FFState* EvaluateWhenApplied(const ChartHypothesis& hypo,
           int featureID,
           ScoreComponentCollection* accumulator) const {
-    throw std::logic_error("LatticeKTau not valid in chart decoder");
+    throw std::logic_error("PermutationExpectedKendallTau not valid in chart decoder");
   }
 
   void SetParameter(const std::string& key, const std::string& value);
@@ -195,11 +171,6 @@ public:
   // TODO - CHECK: Learn more about the contract in this case. I think we need to make sure ourselves that this is thread-safe... which makes me wonder why this method is not const. I agree it does not make sense to have an "initialization" method be const, but then we should have a clearer contract.
 
 private:
-
-    //inline std::size_t GetInputId() const
-    //{
-    //    return m_seg;
-    //}
 
     inline std::size_t GetInputLength(const std::size_t sid) const 
     {
@@ -214,7 +185,14 @@ private:
      *  where i and j are 0-based positions in s. 
      *  Within a triplet each field is separated by a pace (or a tab, or a colon). 
      */
-    void ReadExpectations(const std::string& path);
+    void ReadExpectations(const std::string& path, const bool update_length);
+
+    /*
+     * Load length info about the original input sentences.
+     * This is necessary in order to instantiate a coverage vector of appropriate length.
+     * Format: one integer per line.
+     */
+    void ReadLengthInfo(const std::string& path);
 
     /*
      * Return the contribution of the skip bigram <left ... right> to the 
@@ -227,6 +205,7 @@ private:
     double GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const;
 
     float ComputeExpectation(const std::size_t sid, std::vector<std::size_t> &positions) const;
+    float ComputeExpectation(const std::size_t sid, const std::vector<std::size_t>& positions, const WordsBitmap& coverage) const;
     
     /*
      * This method abstracts away the position of the feature "External KTau" in the vector of score components.
@@ -258,56 +237,8 @@ private:
         scores[2] = score;
     }
     
-    /*
-     * This method abstracts away the position of the feature "External Distortion Cost" in the vector of score components.
-     * Distortion cost is a function of the distance between the FIRST word in the current phrase
-     * and the LAST word of the previous phrase.
-     *
-     * In this version we IGNORE word alignment information, thus both the previous and the current phrases are assumed 
-     * to be (or have been) covered in the order given by the lattice.
-     */
-    inline void SetExternalDistortionCost(std::vector<float> &scores, const float score) const
-    {
-        scores[3] = score;
-    }
-    
-    /*
-     * This method abstracts away the position of the feature "External Distortion Cost Given Word Alignment" in the vector of score components.
-     * Distortion cost is a function of the distance between the FIRST word in the current phrase
-     * and the LAST word of the previous phrase.
-     *
-     * In this version we USE word alignment information, thus both the previous and the current phrases are assumed 
-     * to be (or have been) covered in target word order.
-     */
-    inline void SetExternalDistortionCostGivenWA(std::vector<float> &scores, const float score) const
-    {
-        scores[4] = score;
-    }
-    
-    /*
-     * This method abstracts away the position of the feature "Internal Distortion Cost" in the vector of score components.
-     * We iterate through the phrase from left-to-right accumulating the absolute values of the jumps.
-     *
-     * In this version we IGNORE word alignment information, thus the phrases is assumed 
-     * to be covered in the order given by the lattice.
-     */
-    inline void SetInternalDistortionCost(std::vector<float> &scores, const float score) const
-    {
-        scores[5] = score;
-    }
-    
-    /*
-     * This method abstracts away the position of the feature "Internal Distortion Cost Given Word Alignment" in the vector of score components.
-     * We iterate through the phrase from left-to-right accumulating the absolute values of the jumps.
-     *
-     * In this version we USE word alignment information, thus the phrase is assumed 
-     * to be covered in target word order.
-     */
-    inline void SetInternalDistortionCostGivenWA(std::vector<float> &scores, const float score) const
-    {
-        scores[6] = score;
-    }
 };
 
 }
+
 

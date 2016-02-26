@@ -1,4 +1,4 @@
-#include "moses/FF/LatticeKTau.h"
+#include "moses/FF/PermutationExpectedKendallTau.h"
 
 #include <cstdlib>
 #include <algorithm>
@@ -17,53 +17,42 @@
 #include "moses/Util.h"
 #include "moses/AlignmentInfo.h"
 #include "moses/InputPath.h"
-#include "moses/FF/LatticePermutationFeatures.h"
 
 using namespace std;
-
-namespace  // HELPER stuff useful in this file only
-{
-
-// Computes the usual distortion cost function
-int ComputeDistortionCost(const std::size_t left, const std::size_t right)
-{
-    int jump = right - left - 1;
-    return (jump < 0)? -jump : jump;
-}
-
-// Computes distortion cost given a sequence of positions
-int ComputeDistortionCost(const std::vector<std::size_t> &positions)
-{
-    if (positions.empty())
-        return 0;
-    int d = 0;
-    int last_covered = positions.front();
-    for (std::size_t i = 1; i < positions.size(); ++i) {
-        d += ComputeDistortionCost(last_covered, positions[i]);
-        last_covered = positions[i];
-    }
-    return d;
-}
-
-} 
 
 namespace Moses
 {
 
-LatticeKTau::LatticeKTau(const std::string &line)
-  :StatefulFeatureFunction(7, line), m_unfold_heuristic('M'), m_sstate_fname("sstate")
+PermutationExpectedKendallTau::PermutationExpectedKendallTau(const std::string &line)
+  :StatefulFeatureFunction(3, line), 
+    m_unfold_heuristic('M'), 
+    m_internal_scoring(true),
+    m_wa_scoring(true),
+    m_sstate_fname("index")
 {
     ReadParameters();
+    
     // sanity checks
     UTIL_THROW_IF2(m_table_path.empty(),
-          "LatticeKTau requires a table of expectations of skip-bigrams (table=<path>).");
+          "PermutationExpectedKendallTau requires a table of expectations of skip-bigrams (table=<path>).");
+    
+    // update the number of components
+    /*
+    std::size_t n_components = 0;
+    if (m_wa_scoring) {
+        n_components += (m_internal_scoring)? 3 : 1;
+    } else {
+        n_components += (m_internal_scoring)? 2 : 1;
+    } 
+    m_numScoreComponents = n_components;  // not sure how we get to have the number of features depend on the parameters of the FF
+    */
 }
 
 /**
  * CONFIG FF
  */
 
-void LatticeKTau::SetParameter(const std::string& key, const std::string& value)
+void PermutationExpectedKendallTau::SetParameter(const std::string& key, const std::string& value)
 {
     if (key == "skipBigramExpLocation" || key == "table") {
         // read table of skip-bigram expectations
@@ -71,6 +60,12 @@ void LatticeKTau::SetParameter(const std::string& key, const std::string& value)
             m_table_path = value;
         } else {
             UTIL_THROW2("Table not found: " + value);
+        }
+    } else if (key == "originalLengthTable" || key == "length-table") {
+        if (FileExists(value)) {
+            m_length_table_path = value;
+        } else {
+            UTIL_THROW2("Length table not found: " + value);
         }
     } else if (key == "originalPosLabel" || key == "sstate-fname") {
         m_sstate_fname = value;
@@ -83,6 +78,12 @@ void LatticeKTau::SetParameter(const std::string& key, const std::string& value)
           m_unfold_heuristic = 'R';
       else
           UTIL_THROW2("Unknown heuristic: " + value);
+    } else if (key == "scorePermutationsWithinPhrases") {
+        if (ToLower(value) == "no" || value == "0" || ToLower(value) == "false")
+           m_internal_scoring = false; 
+    } else if (key == "permuteUsingWordAlignments") {
+        if (ToLower(value) == "no" || value == "0" || ToLower(value) == "false")
+           m_wa_scoring = false; 
     } else {
         FeatureFunction::SetParameter(key, value);
     }
@@ -93,16 +94,20 @@ void LatticeKTau::SetParameter(const std::string& key, const std::string& value)
  */
 
 
-void LatticeKTau::Load() 
+void PermutationExpectedKendallTau::Load() 
 {
     // read expectations if provided
+    if (!m_length_table_path.empty())
+        ReadLengthInfo(m_length_table_path);
     if (!m_table_path.empty())
-        ReadExpectations(m_table_path);
+        ReadExpectations(m_table_path, m_length_table_path.empty());
 }
 
-
-void LatticeKTau::ReadExpectations(const std::string& path) 
+void PermutationExpectedKendallTau::ReadExpectations(const std::string& path, const bool update_length) 
 {
+    if (update_length)
+        m_lengths.clear();
+
     std::ifstream fin(path.c_str());
     std::string line;
     while (std::getline(fin, line)) {
@@ -110,9 +115,9 @@ void LatticeKTau::ReadExpectations(const std::string& path)
         std::map< std::size_t, std::map<std::size_t, double> > taus;
         std::size_t length = 0;
         for (std::size_t i = 0; i < tokens.size() - 2; i += 3) {
-            const std::size_t a = std::atoi(tokens[i].c_str());
-            const std::size_t b = std::atoi(tokens[i + 1].c_str());
-            const double expectation = std::atof(tokens[i + 2].c_str());
+            const std::size_t a = Scan<std::size_t>(tokens[i]);
+            const std::size_t b = Scan<std::size_t>(tokens[i + 1]);
+            const double expectation = Scan<double>(tokens[i + 2]);
             taus[a][b] = expectation; 
             if (a + 1 > length)
                 length = a + 1;
@@ -120,6 +125,18 @@ void LatticeKTau::ReadExpectations(const std::string& path)
                 length = b + 1;
         }
         m_taus.push_back(taus);
+        if (update_length)
+            m_lengths.push_back(length);
+    }
+}
+
+void PermutationExpectedKendallTau::ReadLengthInfo(const std::string& path)
+{
+    m_lengths.clear();
+    std::ifstream fin(path.c_str());
+    std::string line;
+    while (std::getline(fin, line)) {
+        const std::size_t length = Scan<std::size_t>(line);
         m_lengths.push_back(length);
     }
 }
@@ -128,7 +145,7 @@ void LatticeKTau::ReadExpectations(const std::string& path)
  * HELPER
  */
 
-double LatticeKTau::GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const
+double PermutationExpectedKendallTau::GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const
 {
     std::map< std::size_t, std::map<std::size_t, double> >::const_iterator it = m_taus[sid].find(left);
     if (it == m_taus[sid].end()) 
@@ -144,16 +161,16 @@ double LatticeKTau::GetExpectation(const std::size_t sid, const std::size_t left
  * COMPUTE FF
  */
   
-void LatticeKTau::InitializeForInput(InputType const& source) 
+void PermutationExpectedKendallTau::InitializeForInput(InputType const& source) 
 {
     const std::size_t sid = source.GetTranslationId();  // the sequential id of the segment being translated
     // sanity checks
     UTIL_THROW_IF2(sid >= m_taus.size(),
-          "LatticeKTau::GetExpectation: it seems like you are missing entries in the table of skip-bigram expectations.");
+          "PermutationExpectedKendallTau::InitializeForInput: it seems like you are missing entries in the table of skip-bigram expectations.");
 }
 
 
-float LatticeKTau::ComputeExpectation(const std::size_t sid, std::vector<std::size_t> &positions) const
+float PermutationExpectedKendallTau::ComputeExpectation(const std::size_t sid, std::vector<std::size_t> &positions) const
 {
     float expectation = 0.0;
     for (std::size_t i = 0; i < positions.size() - 1; ++i) {
@@ -166,64 +183,9 @@ float LatticeKTau::ComputeExpectation(const std::size_t sid, std::vector<std::si
     return expectation;
 }
 
-
-void LatticeKTau::EvaluateWithSourceContext(const InputType &input
-    , const InputPath &inputPath
-    , const TargetPhrase &targetPhrase
-    , const StackVec *stackVec
-    , ScoreComponentCollection &scoreBreakdown
-    , ScoreComponentCollection *estimatedFutureScore) const
+float PermutationExpectedKendallTau::ComputeExpectation(const std::size_t sid, const std::vector<std::size_t>& positions, const WordsBitmap& coverage) const
 {
-    const std::size_t sid = input.GetTranslationId();
-    std::vector<float> scores(GetNumScoreComponents(), 0.0);
-    
-    // score phrases wrt how they permute the input (this uses the lattice input and ignores word alignment)
-    std::vector<std::size_t> positions(GetInputPositions(inputPath, m_sstate_fname));
-    SetKTauInternalToPhrase(scores, ComputeExpectation(sid, positions));
-    
-    // score phrases wrt how they permute the input given word alignment information (this rearranges the lattice input in target word order)
-    // unaligned words behave according to the option of unfold heuristic
-    std::vector<std::size_t> permutation(GetPermutation(positions, targetPhrase.GetAlignTerm(), m_unfold_heuristic));
-    SetKTauInternalToPhraseGivenWA(scores, ComputeExpectation(sid, permutation));
-
-    // compute distortion cost internal to phrase (this uses the lattice input and ignores word alignment)
-    SetInternalDistortionCost(scores, ComputeDistortionCost(positions));
-    
-    // compute distortion cost internal to phrase given word alignment information (again lattice input is rearranged in target word order)
-    SetInternalDistortionCostGivenWA(scores, ComputeDistortionCost(permutation));
-
-    // update feature vector 
-    scoreBreakdown.PlusEquals(this, scores);
-
-    // note that this FF could also account for features such as monotone/swap/discontiguous
-
-    // TODO: update estimatedFutureScore?
-}
-
-
-FFState* LatticeKTau::EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
-      ScoreComponentCollection* accumulator) const
-{
-    const std::size_t sid = hypo.GetInput().GetTranslationId();
-    // here we need to score the hypothesis wrt yet untranslated words
-    std::vector<float> scores(GetNumScoreComponents(), 0.0);
     float expectation = 0.0;
-    
-    // first we need to get information from the input path that the current phrase covers
-    const TranslationOption& topt = hypo.GetTranslationOption();
-    const InputPath& path = topt.GetInputPath(); 
-    // from the arcs of the lattice we get an input permutation
-    std::vector<std::size_t> positions = GetInputPositions(path, m_sstate_fname);
-    // here we rearrange the words in target word order via word alignment information 
-    std::vector<std::size_t> permutation(GetPermutation(positions, topt.GetTargetPhrase().GetAlignTerm(), m_unfold_heuristic));
-    
-    // now we can update the current coverage vector
-    const LatticeKTauState* prev = dynamic_cast<const LatticeKTauState*>(prev_state);  // previous coverage
-    WordsBitmap coverage(prev->GetCoverage());
-    for (std::size_t i = 0; i < positions.size(); ++i)
-        coverage.SetValue(positions[i], true);  
-
-    // untranslated words will later appear to the right of the current phrase (in target word order)
     for (std::size_t right = 0; right < coverage.GetSize(); ++right) {
         if (coverage.GetValue(right))  // translated words have already been scored
             continue;
@@ -232,24 +194,71 @@ FFState* LatticeKTau::EvaluateWhenApplied(const Hypothesis& hypo, const FFState*
             expectation += GetExpectation(sid, left, right);
         }
     }
+    return expectation;
+}
+
+
+void PermutationExpectedKendallTau::EvaluateWithSourceContext(const InputType &input
+    , const InputPath &inputPath
+    , const TargetPhrase &targetPhrase
+    , const StackVec *stackVec
+    , ScoreComponentCollection &scoreBreakdown
+    , ScoreComponentCollection *estimatedFutureScore) const
+{
+    if (!m_internal_scoring) // maybe we don't care about internal scoring
+        return;
+
+    const std::size_t sid = input.GetTranslationId();
+    std::vector<float> scores(GetNumScoreComponents(), 0.0);
     
+    // score phrases wrt how they permute the input (this uses the lattice input and ignores word alignment)
+    std::vector<std::size_t> positions(GetInputPositions(inputPath, m_sstate_fname)); 
+    SetKTauInternalToPhrase(scores, ComputeExpectation(sid, positions));
+
+    if (m_wa_scoring) { // maybe we want to rely on word-alignment
+        // score phrases wrt how they permute the input given word alignment information (this rearranges the lattice input in target word order)
+        // unaligned words behave according to the option of unfold heuristic
+        std::vector<std::size_t> permutation(GetPermutation(positions, targetPhrase.GetAlignTerm(), m_unfold_heuristic));
+        SetKTauInternalToPhraseGivenWA(scores, ComputeExpectation(sid, permutation));
+    }
+
+    // update feature vector 
+    scoreBreakdown.PlusEquals(this, scores);
+
+}
+
+
+FFState* PermutationExpectedKendallTau::EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
+      ScoreComponentCollection* accumulator) const
+{
+    const std::size_t sid = hypo.GetInput().GetTranslationId();
+    // here we need to score the hypothesis wrt yet untranslated words
+    std::vector<float> scores(GetNumScoreComponents(), 0.0);
+    
+    // first we need to get information from the input path that the current phrase covers
+    const TranslationOption& topt = hypo.GetTranslationOption();
+    const InputPath& path = topt.GetInputPath(); 
+    // from the arcs of the lattice we get an input permutation
+    std::vector<std::size_t> positions = GetInputPositions(path, m_sstate_fname);
+    
+    // now we can update the current coverage vector
+    const PermutationExpectedKendallTauState* prev = dynamic_cast<const PermutationExpectedKendallTauState*>(prev_state);  // previous coverage
+    WordsBitmap coverage(prev->GetCoverage());
+    for (std::size_t i = 0; i < positions.size(); ++i)
+        coverage.SetValue(positions[i], true);  
+
     // we update the score external to the phrase (notice that this feature never depends on word alignment)
     // because the internal order of the phrase does not matter
-    SetKTauExternalToPhrase(scores, expectation);
+    SetKTauExternalToPhrase(scores, ComputeExpectation(sid, positions, coverage));
 
-    // compute distortion cost external to the phrase assuming the input permutation (that of the lattice)
-    SetExternalDistortionCost(scores, ComputeDistortionCost(prev->GetLastCovered(), positions.front()));
-    
-    // compute disttortion cost external to the phrase assuming target word order (by rearranging lattice input using word alignment information) 
-    SetExternalDistortionCostGivenWA(scores, ComputeDistortionCost(prev->GetLastCoveredGivenWA(), permutation.front()));
-
-    accumulator->PlusEquals(this, scores);
-   
     // and return the new coverage vector  
-    return new LatticeKTauState(coverage, positions.back(), permutation.back());
-}
-
-
+    accumulator->PlusEquals(this, scores);
+    return new PermutationExpectedKendallTauState(coverage);
 
 }
+
+
+
+}
+
 
