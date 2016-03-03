@@ -123,18 +123,32 @@ void KTau::ReadPermutations(const std::string& path)
   
 void KTau::InitializeForInput(InputType const& source) 
 {
-    m_seg = source.GetTranslationId();  // the sequential id of the segment being translated
+    const std::size_t sid = source.GetTranslationId();  // the sequential id of the segment being translated
+    
+    // sanity checks
+    UTIL_THROW_IF2(sid >= m_taus.size(),
+          "KTau::InitializeForInput: it seems like you are missing entries in the table of skip-bigram expectations.");
+
+    if (!m_permutations.empty()) {
+        UTIL_THROW_IF2(sid >= m_permutations.size(),
+              "KTau::InitializeForInput: it seems like you are missing entries in the table of permutations.");
+
+        UTIL_THROW_IF2(source.GetSize() != m_permutations[sid].size(),
+              "KTau::InitializeForInput: it seems like there is a mismatch in sentence/permutation length.");
+
+    }
+
 }
 
-std::size_t KTau::MapInputPosition(const std::size_t i) const
+std::size_t KTau::MapInputPosition(const std::size_t sid, const std::size_t i) const
 {
-    return (m_permutations.empty())? i : m_permutations[m_seg][i]; 
+    return (m_permutations.empty())? i : m_permutations[sid][i]; 
 }
 
-double KTau::GetExpectation(const std::size_t left, const std::size_t right) const
+double KTau::GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const
 {
-    std::map< std::size_t, std::map<std::size_t, double> >::const_iterator it = m_taus[m_seg].find(left);
-    if (it == m_taus[m_seg].end()) 
+    std::map< std::size_t, std::map<std::size_t, double> >::const_iterator it = m_taus[sid].find(left);
+    if (it == m_taus[sid].end()) 
         return 0.0;
     std::map<std::size_t, double>::const_iterator it2 = it->second.find(right);
     if (it2 == it->second.end())
@@ -223,6 +237,7 @@ void KTau::EvaluateWithSourceContext(const InputType &input
     , ScoreComponentCollection &scoreBreakdown
     , ScoreComponentCollection *estimatedFutureScore) const
 {
+    const std::size_t sid = input.GetTranslationId();
     const std::vector<std::size_t> sequence(GetPermutation(inputPath.GetWordsRange(), targetPhrase));
     std::vector<float> scores(GetNumScoreComponents(), 0.0);
     float expectation = 0.0;
@@ -230,7 +245,7 @@ void KTau::EvaluateWithSourceContext(const InputType &input
         const std::size_t a = sequence[i];
         for (std::size_t j = i + 1; j < sequence.size(); ++j) {
             const std::size_t b = sequence[j];
-            expectation += GetExpectation(MapInputPosition(a), MapInputPosition(b));
+            expectation += GetExpectation(sid, MapInputPosition(sid, a), MapInputPosition(sid, b));
         }
     }
     SetKTauInternalToPhrase(scores, expectation);
@@ -240,6 +255,7 @@ void KTau::EvaluateWithSourceContext(const InputType &input
 void KTau::EvaluateWhenApplied(const Hypothesis& hypo,
     ScoreComponentCollection* accumulator) const
 {
+    const std::size_t sid = hypo.GetInput().GetTranslationId();
     const WordsBitmap& bmap = hypo.GetWordsBitmap();
     const WordsRange& curr = hypo.GetCurrSourceWordsRange();
     // isolate untranslated words as those will necessarily appear to the right of the current phrase
@@ -259,7 +275,7 @@ void KTau::EvaluateWhenApplied(const Hypothesis& hypo,
     for (std::size_t left = curr.GetStartPos(); left <= curr.GetEndPos(); ++left) {
         for (std::size_t j = 0; j < future.size(); ++j) {
             const std::size_t right = future[j];
-            expectation += GetExpectation(MapInputPosition(left), MapInputPosition(right));
+            expectation += GetExpectation(sid, MapInputPosition(sid, left), MapInputPosition(sid, right));
         }
     }
     SetKTauExternalToPhrase(scores, expectation);

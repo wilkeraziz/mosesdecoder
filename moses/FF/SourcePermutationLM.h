@@ -74,11 +74,6 @@ public:
   {
   }
   
-  void EvaluateInIsolation(const Phrase &source
-                           , const TargetPhrase &targetPhrase
-                           , ScoreComponentCollection &scoreBreakdown
-                           , ScoreComponentCollection &estimatedFutureScore) const;
-
   void EvaluateTranslationOptionListWithSourceContext(const InputType &input
       , const TranslationOptionList &translationOptionList) const
   {
@@ -100,6 +95,12 @@ public:
                                  , ScoreComponentCollection *estimatedFutureScore = NULL) const
   {
   }
+  
+  void EvaluateInIsolation(const Phrase &source
+                           , const TargetPhrase &targetPhrase
+                           , ScoreComponentCollection &scoreBreakdown
+                           , ScoreComponentCollection &estimatedFutureScore) const;
+
 
   FFState* EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
           ScoreComponentCollection* accumulator) const;

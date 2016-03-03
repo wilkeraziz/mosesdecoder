@@ -32,7 +32,6 @@ private:
     std::vector< std::map< std::size_t, std::map<std::size_t, double> > > m_taus; // table of expectations
     std::string m_table_path; // path to table of expectations
     std::string m_mapping_path; // path to a possible list of s' to s mappings
-    std::size_t m_seg; // segment being translated (necessary in referring to table of permutations and expectations)
     char m_unfold_heuristic; // selects a heuristic to unfold word alignments
     
 public:
@@ -142,7 +141,7 @@ private:
      * (e.g. the best predicted order according to some reordering model)
      * in such cases we need to find the word in s which corresponds to a given ith word in s'.
      */
-    std::size_t MapInputPosition(const std::size_t i) const;
+    std::size_t MapInputPosition(const std::size_t sid, const std::size_t i) const;
 
     /*
      * Return the contribution of the skip bigram <left ... right> to the 
@@ -152,7 +151,7 @@ private:
      *  GetExpectation(MapInputPosition(i), MapInputPosition(j)) 
      * where MapInputPosition abstracts away from the type of input (original vs predicted order).
      */
-    double GetExpectation(const std::size_t left, const std::size_t right) const;
+    double GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const;
 
     /*
      * Load a file of expectation over skip bigrams.
