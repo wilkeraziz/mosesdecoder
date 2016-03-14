@@ -68,6 +68,7 @@
 #include "moses/FF/SourcePermutationLM.h"
 #include "moses/FF/PermutationDistortion.h"
 #include "moses/FF/PermutationExpectedKendallTau.h"
+#include "moses/FF/PreorderedDistortionPenalty.h"
 
 #ifdef HAVE_VW
 #include "moses/FF/VW/VW.h"
@@ -256,6 +257,7 @@ FeatureRegistry::FeatureRegistry()
   MOSES_FNAME(SourcePermutationLM);
   MOSES_FNAME(PermutationDistortion);
   MOSES_FNAME(PermutationExpectedKendallTau);
+  MOSES_FNAME(PreorderedDistortionPenalty);
 
 #ifdef HAVE_VW
   MOSES_FNAME(VW);
