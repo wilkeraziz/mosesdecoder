@@ -50,6 +50,7 @@ class SourcePermutationLM : public StatefulFeatureFunction
 private:
     std::string m_model_path;  // where the LM is stored
     boost::shared_ptr<kenlm::ngram::Model> m_model;
+    int m_factor;
 
 
 public:
@@ -66,13 +67,17 @@ public:
       SourcePermutationLMState *state = new SourcePermutationLMState(m_model->BeginSentenceState());
       return state;
   }
-  
+ 
+  // TODO: Moses does not call EvaluateInIsolation (with an inputPath) 
+  // it calls EvaluateInIsolation with an Phrase 
+  // I need to assess the inputPath
+  // What Moses does call with an inputPath is EvaluateWithSourceContext
+  // but that method does not get called for OOVs
+  // so I had to invent this alternative here 
   void EvaluateInIsolation(const InputPath &inputPath
                            , const TargetPhrase &targetPhrase
                            , ScoreComponentCollection &scoreBreakdown
-                           , ScoreComponentCollection &estimatedFutureScore) const
-  {
-  }
+                           , ScoreComponentCollection &estimatedFutureScore) const;
   
   void EvaluateTranslationOptionListWithSourceContext(const InputType &input
       , const TranslationOptionList &translationOptionList) const
@@ -92,14 +97,15 @@ public:
                                  , const TargetPhrase &targetPhrase
                                  , const StackVec *stackVec
                                  , ScoreComponentCollection &scoreBreakdown
-                                 , ScoreComponentCollection *estimatedFutureScore = NULL) const
-  {
-  }
+                                 , ScoreComponentCollection *estimatedFutureScore) const;
   
+  // I cannot use this one, because source is a Phrase from the phrase table, not from the input!
   void EvaluateInIsolation(const Phrase &source
                            , const TargetPhrase &targetPhrase
                            , ScoreComponentCollection &scoreBreakdown
-                           , ScoreComponentCollection &estimatedFutureScore) const;
+                           , ScoreComponentCollection &estimatedFutureScore) const
+  {
+  }
 
 
   FFState* EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 

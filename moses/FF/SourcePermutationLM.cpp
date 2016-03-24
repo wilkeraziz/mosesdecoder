@@ -14,6 +14,7 @@
 #include "moses/InputType.h"
 #include "moses/TranslationOption.h"
 #include "moses/Util.h"
+#include "moses/StackVec.h"
 #include "moses/AlignmentInfo.h"
 #include "moses/InputPath.h"
 
@@ -24,7 +25,7 @@ namespace Moses
 {
 
  SourcePermutationLM::SourcePermutationLM(const std::string &line)
-  :StatefulFeatureFunction(1, line)
+  :StatefulFeatureFunction(1, line), m_factor(0)
 {
     ReadParameters();
     UTIL_THROW_IF2(m_model_path.empty(),
@@ -43,6 +44,8 @@ void SourcePermutationLM::SetParameter(const std::string& key, const std::string
         } else {
             UTIL_THROW2("Model not found: " + value);
         }
+    } else if (key == "factor") {
+        m_factor = Scan<int>(value);
     } else {
         FeatureFunction::SetParameter(key, value);
     }
@@ -73,7 +76,7 @@ float SourcePermutationLM::KenLMScore(const Phrase& phrase,
     float score = 0.0;
     for (std::size_t i = begin; i < end; ++i) {   
         score += m_model->Score(*state0, 
-                m_model->GetVocabulary().Index(phrase.GetWord(i).GetString(0)), 
+                m_model->GetVocabulary().Index(phrase.GetWord(i).GetString(m_factor)), 
                 *state1);
         std::swap(state0, state1);
     }
@@ -94,7 +97,7 @@ float SourcePermutationLM::KenLMScore(const Phrase& phrase,
     float score = 0.0;
     for (std::size_t i = 0; i < phrase.GetSize(); ++i) {   
         float partial = m_model->Score(*state0, 
-                m_model->GetVocabulary().Index(phrase.GetWord(i).GetString(0)), 
+                m_model->GetVocabulary().Index(phrase.GetWord(i).GetString(m_factor)), 
                 *state1);
         std::swap(state0, state1);
         if (i >= ctxt_size) {
@@ -105,19 +108,35 @@ float SourcePermutationLM::KenLMScore(const Phrase& phrase,
     }
     return score;
 }
-  
-void SourcePermutationLM::EvaluateInIsolation(const Phrase &source
+
+void SourcePermutationLM::EvaluateInIsolation(const InputPath &inputPath
                        , const TargetPhrase &targetPhrase
                        , ScoreComponentCollection &scoreBreakdown
                        , ScoreComponentCollection &estimatedFutureScore) const
 {
     float outside = 0.0;
-    float score = KenLMScore(source, outside);
+    float score = KenLMScore(inputPath.GetPhrase(), outside);
     // transform scores and add to vector
     scoreBreakdown.Assign(this, TransformLMScore(score));
     estimatedFutureScore.Assign(this, TransformLMScore(outside));
 }
 
+void SourcePermutationLM::EvaluateWithSourceContext(const InputType &input
+                             , const InputPath &inputPath
+                             , const TargetPhrase &targetPhrase
+                             , const StackVec *stackVec
+                             , ScoreComponentCollection &scoreBreakdown
+                             , ScoreComponentCollection *estimatedFutureScore = NULL) const
+{
+    float outside = 0.0;
+    float score = KenLMScore(inputPath.GetPhrase(), outside);
+    // transform scores and add to vector
+    scoreBreakdown.Assign(this, TransformLMScore(score));
+    if (estimatedFutureScore != NULL) {
+        estimatedFutureScore->Assign(this, TransformLMScore(outside));
+    }
+}
+  
 
 FFState* SourcePermutationLM::EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
       ScoreComponentCollection* accumulator) const
