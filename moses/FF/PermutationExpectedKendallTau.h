@@ -185,7 +185,7 @@ private:
      *  where i and j are 0-based positions in s. 
      *  Within a triplet each field is separated by a pace (or a tab, or a colon). 
      */
-    void ReadExpectations(const std::string& path, const bool update_length);
+    void ReadExpectations(const std::string& path);
 
     /*
      * Load length info about the original input sentences.

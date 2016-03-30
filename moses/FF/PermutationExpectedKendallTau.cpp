@@ -1,6 +1,7 @@
 #include "moses/FF/PermutationExpectedKendallTau.h"
 
 #include <cstdlib>
+#include <string>
 #include <algorithm>
 #include <vector>
 #include <deque>
@@ -35,6 +36,8 @@ PermutationExpectedKendallTau::PermutationExpectedKendallTau(const std::string &
     // sanity checks
     UTIL_THROW_IF2(m_table_path.empty(),
           "PermutationExpectedKendallTau requires a table of expectations of skip-bigrams (table=<path>).");
+    UTIL_THROW_IF2(m_length_table_path.empty(),
+          "PermutationExpectedKendallTau requires a table containing the length of the original sentences (length-table=<path>).");
     
     // update the number of components
     /*
@@ -100,33 +103,32 @@ void PermutationExpectedKendallTau::Load()
     if (!m_length_table_path.empty())
         ReadLengthInfo(m_length_table_path);
     if (!m_table_path.empty())
-        ReadExpectations(m_table_path, m_length_table_path.empty());
+        ReadExpectations(m_table_path);
 }
 
-void PermutationExpectedKendallTau::ReadExpectations(const std::string& path, const bool update_length) 
+void PermutationExpectedKendallTau::ReadExpectations(const std::string& path)
 {
-    if (update_length)
-        m_lengths.clear();
-
     std::ifstream fin(path.c_str());
     std::string line;
     while (std::getline(fin, line)) {
-        const std::vector<std::string> tokens = Tokenize(line, " \t:");
-        std::map< std::size_t, std::map<std::size_t, double> > taus;
+        const std::vector<std::string> tokens = Tokenize(Trim(line), " \t:");
+        m_taus.resize(m_taus.size() + 1);
+        std::map< std::size_t, std::map<std::size_t, double> > &taus = m_taus.back();
         std::size_t length = 0;
-        for (std::size_t i = 0; i < tokens.size() - 2; i += 3) {
-            const std::size_t a = Scan<std::size_t>(tokens[i]);
-            const std::size_t b = Scan<std::size_t>(tokens[i + 1]);
-            const double expectation = Scan<double>(tokens[i + 2]);
-            taus[a][b] = expectation; 
-            if (a + 1 > length)
-                length = a + 1;
-            if (b + 1 > length)
-                length = b + 1;
+        UTIL_THROW_IF2(tokens.size() % 3 != 0,
+          "Line " + SPrint(m_taus.size()) + ". Expected triplets (i:j:u), got: " + line);
+        if (tokens.size() > 0) {
+            for (std::size_t i = 0; i < tokens.size() - 2; i += 3) {
+                const std::size_t a = Scan<std::size_t>(tokens[i]);
+                const std::size_t b = Scan<std::size_t>(tokens[i + 1]);
+                const double expectation = Scan<double>(tokens[i + 2]);
+                taus[a][b] = expectation; 
+                if (a + 1 > length)
+                    length = a + 1;
+                if (b + 1 > length)
+                    length = b + 1;
+            }
         }
-        m_taus.push_back(taus);
-        if (update_length)
-            m_lengths.push_back(length);
     }
 }
 
