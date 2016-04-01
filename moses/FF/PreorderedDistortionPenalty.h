@@ -7,10 +7,29 @@
 #include "moses/Hypothesis.h"
 #include "moses/ChartHypothesis.h"
 #include "moses/FF/FFState.h"
+#include "moses/FF/ReorderingHelper.h"
 
 namespace Moses
 {
-    
+
+/*
+ * This feature computes distortion costs correctly when the input is preordered text.
+ * It only supports sentence input (for lattice input check LatticeDistortionPenalty).
+ *
+ * Arguments:
+ *  mappings=<path>
+ *      we interpret this as a table of permutations
+ *      1 permutation per line
+ *      each permutation is a space-separated sequence of 0-based positions mapping s' (preordered input) to s (original input)
+ *
+ * Features:
+ *   1. distortion cost
+ *      The usual notion of distortion cost, however, the positions associated with boundary words of phrases are translated back to original word order
+ *      by using the permutations provided in the table.
+ *   2. distortion cost internal to phrases
+ *      Note that with preordered input, a contiguous source phrase may cover a discontiguous sequence of source words (wrt the original word order).
+ *      This feature captures how much distortion we observe within phrases.
+ */    
 class PreorderedDistortionPenaltyState : public FFState
 {
 public:
@@ -53,8 +72,6 @@ private:
     std::vector< std::vector<std::size_t> > m_permutations; // table of permutations
     std::string m_mapping_path; // path to a possible list of s' to s mappings
 
-    void ReadPermutations(const std::string& path);
-    
     inline void SetExternalDistortionCost(std::vector<float> &scores, const float score) const
     {
         scores[0] = score;

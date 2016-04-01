@@ -62,13 +62,14 @@
 #include "SkeletonChangeInput.h"
 #include "moses/TranslationModel/SkeletonPT.h"
 #include "moses/Syntax/RuleTableFF.h"
-#include "moses/FF/KTau.h"
-#include "moses/FF/LatticeKTauSimple.h"
-#include "moses/FF/LatticeKTau.h"
+#include "moses/FF/SkipBigramModel.h"
+#include "moses/FF/LatticeDenseNamedFeature.h"
 #include "moses/FF/SourcePermutationLM.h"
-#include "moses/FF/PermutationDistortion.h"
-#include "moses/FF/PermutationExpectedKendallTau.h"
+#include "moses/FF/LatticeDistortionPenalty.h"
+#include "moses/FF/LatticeSkipBigramModel.h"
 #include "moses/FF/PreorderedDistortionPenalty.h"
+#include "moses/FF/SparseMorphology.h"
+#include "moses/FF/SparsePhrasePairMorphology.h"
 
 #ifdef HAVE_VW
 #include "moses/FF/VW/VW.h"
@@ -251,13 +252,17 @@ FeatureRegistry::FeatureRegistry()
   MOSES_FNAME(SkeletonTranslationOptionListFeature);
   MOSES_FNAME(SkeletonPT);
 
-  MOSES_FNAME(KTau);
-  MOSES_FNAME(LatticeKTauSimple);
-  MOSES_FNAME(LatticeKTau);
-  MOSES_FNAME(SourcePermutationLM);
-  MOSES_FNAME(PermutationDistortion);
-  MOSES_FNAME(PermutationExpectedKendallTau);
+  MOSES_FNAME(SkipBigramModel);
+  MOSES_FNAME2("KTau", SkipBigramModel);  // TODO: get rid of this old name
   MOSES_FNAME(PreorderedDistortionPenalty);
+  MOSES_FNAME(SourcePermutationLM);
+  MOSES_FNAME(LatticeDenseNamedFeature);
+  MOSES_FNAME(LatticeDistortionPenalty);  
+  MOSES_FNAME2("PermutationDistortion", LatticeDistortionPenalty);  // TODO: get rid of this old name
+  MOSES_FNAME(LatticeSkipBigramModel); 
+  MOSES_FNAME2("PermutationExpectedKendallTau", LatticeSkipBigramModel);  // TODO: get rid of this old name
+  MOSES_FNAME(SparseMorphology);
+  MOSES_FNAME(SparsePhrasePairMorphology);
 
 #ifdef HAVE_VW
   MOSES_FNAME(VW);

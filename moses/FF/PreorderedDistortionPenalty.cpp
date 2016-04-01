@@ -17,34 +17,10 @@
 #include "moses/Util.h"
 #include "moses/AlignmentInfo.h"
 #include "moses/InputPath.h"
+#include "moses/TypeDef.h"
 
 using namespace std;
 
-namespace  // HELPER stuff useful in this file only
-{
-
-// Computes the usual distortion cost function
-int ComputeDistortionCost(const std::size_t left, const std::size_t right)
-{
-    int jump = right - left - 1;
-    return (jump < 0)? -jump : jump;
-}
-
-// Computes distortion cost given a sequence of positions
-int ComputeDistortionCost(const std::vector<std::size_t> &positions)
-{
-    if (positions.empty())
-        return 0;
-    int d = 0;
-    int last_covered = positions.front();
-    for (std::size_t i = 1; i < positions.size(); ++i) {
-        d += ComputeDistortionCost(last_covered, positions[i]);
-        last_covered = positions[i];
-    }
-    return d;
-}
-
-} 
 
 namespace Moses
 {
@@ -64,7 +40,7 @@ PreorderedDistortionPenalty::PreorderedDistortionPenalty(const std::string &line
 
 void PreorderedDistortionPenalty::SetParameter(const std::string& key, const std::string& value)
 {
-    if (key == "mapping") {
+    if (key == "permutations" || key == "mapping") {
         if (FileExists(value)) {
             m_mapping_path = value;
         } else {
@@ -83,21 +59,7 @@ void PreorderedDistortionPenalty::SetParameter(const std::string& key, const std
 void PreorderedDistortionPenalty::Load() 
 {
     // read permutations
-    ReadPermutations(m_mapping_path);
-}
-
-void PreorderedDistortionPenalty::ReadPermutations(const std::string& path) 
-{
-    std::ifstream fin(path.c_str());
-    std::string line;
-    while (std::getline(fin, line)) {
-        const std::vector<std::string> tokens = Tokenize(line);
-        std::vector<std::size_t> permutation(tokens.size());
-        for (std::size_t i = 0; i < tokens.size(); ++i) {
-            permutation[i] = std::atoi(tokens[i].c_str());  
-        }
-        m_permutations.push_back(permutation);
-    }
+    ReorderingHelper::ReadPermutations(m_mapping_path, m_permutations);
 }
 
 /**
@@ -108,6 +70,8 @@ void PreorderedDistortionPenalty::InitializeForInput(InputType const& source)
 {
     const std::size_t sid = source.GetTranslationId();  // the sequential id of the segment being translated
     // sanity checks
+    UTIL_THROW_IF2(source.GetType() != SentenceInput,
+            "PreorderedDistortionPenalty only supports sentence input (for lattice input see LatticeDistortionPenalty)");
     UTIL_THROW_IF2(sid >= m_permutations.size(),
           "PreorderedDistortionPenalty::InitializeForInput: it seems like you are missing entries in the table of permutations.");
     UTIL_THROW_IF2(source.GetSize() > m_permutations[sid].size(),
@@ -115,16 +79,6 @@ void PreorderedDistortionPenalty::InitializeForInput(InputType const& source)
 
 }
 
-
-std::vector<std::size_t> PreorderedDistortionPenalty::MapPositions(const std::size_t sid, const WordsRange& range) const
-{
-    std::vector<std::size_t> permutation(range.GetEndPos() - range.GetStartPos() + 1, 0);
-    std::size_t i = 0;
-    for (std::size_t pos = range.GetStartPos(); pos <= range.GetEndPos(); ++pos, ++i) {
-        permutation[i] = m_permutations[sid][pos];
-    }
-    return permutation;
-}
 
 void PreorderedDistortionPenalty::EvaluateWithSourceContext(const InputType &input
     , const InputPath &inputPath
@@ -137,10 +91,10 @@ void PreorderedDistortionPenalty::EvaluateWithSourceContext(const InputType &inp
     std::vector<float> scores(GetNumScoreComponents(), 0.0);
     
     // score phrases wrt how they permute the input (this uses the lattice input and ignores word alignment)
-    std::vector<std::size_t> positions(MapPositions(sid, inputPath.GetWordsRange()));
+    std::vector<std::size_t> positions(ReorderingHelper::MapInputPositions(m_permutations, sid, inputPath.GetWordsRange()));
     
     // compute distortion cost internal to phrase
-    SetInternalDistortionCost(scores, ComputeDistortionCost(positions));
+    SetInternalDistortionCost(scores, ReorderingHelper::ComputeDistortionCost(positions));
     
     // score phrases wrt how they permute the input given word alignment information (this rearranges the lattice input in target word order)
     // unaligned words behave according to the option of unfold heuristic
@@ -148,7 +102,7 @@ void PreorderedDistortionPenalty::EvaluateWithSourceContext(const InputType &inp
 
     
     // compute distortion cost internal to phrase given word alignment information (again lattice input is rearranged in target word order)
-    //SetInternalDistortionCostGivenWA(scores, ComputeDistortionCost(permutation));
+    //SetInternalDistortionCostGivenWA(scores, ReorderingHelper::ComputeDistortionCost(permutation));
 
     // update feature vector 
     scoreBreakdown.PlusEquals(this, scores);
@@ -167,7 +121,7 @@ FFState* PreorderedDistortionPenalty::EvaluateWhenApplied(const Hypothesis& hypo
     const TranslationOption& topt = hypo.GetTranslationOption();
     const InputPath& path = topt.GetInputPath(); 
     // the input path implies a permutation
-    std::vector<std::size_t> positions = MapPositions(sid, path.GetWordsRange());
+    std::vector<std::size_t> positions = ReorderingHelper::MapInputPositions(m_permutations, sid, path.GetWordsRange());
     // here we rearrange the words in target word order via word alignment information 
     //std::vector<std::size_t> permutation(GetPermutation(positions, topt.GetTargetPhrase().GetAlignTerm(), m_unfold_heuristic));
     
@@ -175,10 +129,10 @@ FFState* PreorderedDistortionPenalty::EvaluateWhenApplied(const Hypothesis& hypo
     const PreorderedDistortionPenaltyState* prev = dynamic_cast<const PreorderedDistortionPenaltyState*>(prev_state);  // previous coverage
     
     // compute distortion cost external to the phrase assuming the input permutation (that of the lattice)
-    SetExternalDistortionCost(scores, ComputeDistortionCost(prev->GetLastCovered(), positions.front()));
+    SetExternalDistortionCost(scores, ReorderingHelper::ComputeDistortionCost(prev->GetLastCovered(), positions.front()));
     
     // compute disttortion cost external to the phrase assuming target word order (by rearranging lattice input using word alignment information) 
-    //SetExternalDistortionCostGivenWA(scores, ComputeDistortionCost(prev->GetLastCoveredGivenWA(), permutation.front()));
+    //SetExternalDistortionCostGivenWA(scores, ReorderingHelper::ComputeDistortionCost(prev->GetLastCoveredGivenWA(), permutation.front()));
 
     accumulator->PlusEquals(this, scores);
    

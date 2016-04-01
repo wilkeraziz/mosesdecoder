@@ -1,3 +1,4 @@
+#include "moses/FF/LatticeDistortionPenalty.h"
 #include <cstdlib>
 #include <algorithm>
 #include <vector>
@@ -15,40 +16,15 @@
 #include "moses/Util.h"
 #include "moses/AlignmentInfo.h"
 #include "moses/InputPath.h"
-#include "moses/FF/PermutationDistortion.h"
+#include "moses/FF/ReorderingHelper.h"
 
 using namespace std;
 
-namespace  // HELPER stuff useful in this file only
-{
-
-// Computes the usual distortion cost function
-int ComputeDistortionCost(const std::size_t left, const std::size_t right)
-{
-    int jump = right - left - 1;
-    return (jump < 0)? -jump : jump;
-}
-
-// Computes distortion cost given a sequence of positions
-int ComputeDistortionCost(const std::vector<std::size_t> &positions)
-{
-    if (positions.empty())
-        return 0;
-    int d = 0;
-    int last_covered = positions.front();
-    for (std::size_t i = 1; i < positions.size(); ++i) {
-        d += ComputeDistortionCost(last_covered, positions[i]);
-        last_covered = positions[i];
-    }
-    return d;
-}
-
-} 
 
 namespace Moses
 {
 
-PermutationDistortion::PermutationDistortion(const std::string &line)
+LatticeDistortionPenalty::LatticeDistortionPenalty(const std::string &line)
   :StatefulFeatureFunction(4, line), 
     m_unfold_heuristic('M'), 
     m_internal_scoring(true),
@@ -75,7 +51,7 @@ PermutationDistortion::PermutationDistortion(const std::string &line)
  * CONFIG FF
  */
 
-void PermutationDistortion::SetParameter(const std::string& key, const std::string& value)
+void LatticeDistortionPenalty::SetParameter(const std::string& key, const std::string& value)
 {
     if (key == "originalPosLabel" || key == "sstate-fname") {
         m_sstate_fname = value;
@@ -105,7 +81,7 @@ void PermutationDistortion::SetParameter(const std::string& key, const std::stri
  */
   
 
-void PermutationDistortion::EvaluateWithSourceContext(const InputType &input
+void LatticeDistortionPenalty::EvaluateWithSourceContext(const InputType &input
     , const InputPath &inputPath
     , const TargetPhrase &targetPhrase
     , const StackVec *stackVec
@@ -118,14 +94,14 @@ void PermutationDistortion::EvaluateWithSourceContext(const InputType &input
     std::vector<float> scores(GetNumScoreComponents(), 0.0);
     
     // score phrases wrt how they permute the input (this uses the lattice input and ignores word alignment)
-    std::vector<std::size_t> positions(GetInputPositions(inputPath, m_sstate_fname)); 
-    SetInternalDistortionCost(scores, ComputeDistortionCost(positions));
+    std::vector<std::size_t> positions(ReorderingHelper::GetInputPositionsFromArcs(inputPath, m_sstate_fname)); 
+    SetInternalDistortionCost(scores, ReorderingHelper::ComputeDistortionCost(positions));
 
     if (m_wa_scoring) { // maybe we want to rely on word-alignment
         // score phrases wrt how they permute the input given word alignment information (this rearranges the lattice input in target word order)
         // unaligned words behave according to the option of unfold heuristic
-        std::vector<std::size_t> permutation(GetPermutation(positions, targetPhrase.GetAlignTerm(), m_unfold_heuristic));
-        SetInternalDistortionCostGivenWA(scores, ComputeDistortionCost(permutation));
+        std::vector<std::size_t> permutation(ReorderingHelper::GetPermutation(positions, targetPhrase.GetAlignTerm(), m_unfold_heuristic));
+        SetInternalDistortionCostGivenWA(scores, ReorderingHelper::ComputeDistortionCost(permutation));
     }
 
     // update feature vector 
@@ -133,7 +109,7 @@ void PermutationDistortion::EvaluateWithSourceContext(const InputType &input
 }
 
 
-FFState* PermutationDistortion::EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
+FFState* LatticeDistortionPenalty::EvaluateWhenApplied(const Hypothesis& hypo, const FFState* prev_state, 
       ScoreComponentCollection* accumulator) const
 {
     // here we need to score the hypothesis wrt yet untranslated words
@@ -143,24 +119,24 @@ FFState* PermutationDistortion::EvaluateWhenApplied(const Hypothesis& hypo, cons
     const TranslationOption& topt = hypo.GetTranslationOption();
     const InputPath& path = topt.GetInputPath(); 
     // from the arcs of the lattice we get an input permutation
-    std::vector<std::size_t> positions = GetInputPositions(path, m_sstate_fname);
+    std::vector<std::size_t> positions = ReorderingHelper::GetInputPositionsFromArcs(path, m_sstate_fname);
     
     // now we can update the current coverage vector
-    const PermutationDistortionState* prev = dynamic_cast<const PermutationDistortionState*>(prev_state);  // previous coverage
+    const LatticeDistortionPenaltyState* prev = dynamic_cast<const LatticeDistortionPenaltyState*>(prev_state);  // previous coverage
 
     // compute distortion cost external to the phrase assuming the input permutation (that of the lattice)
-    SetExternalDistortionCost(scores, ComputeDistortionCost(prev->GetLastCovered(), positions.front()));
+    SetExternalDistortionCost(scores, ReorderingHelper::ComputeDistortionCost(prev->GetLastCovered(), positions.front()));
     if (m_wa_scoring) {
         // here we rearrange the words in target word order via word alignment information 
-        std::vector<std::size_t> permutation(GetPermutation(positions, topt.GetTargetPhrase().GetAlignTerm(), m_unfold_heuristic));
+        std::vector<std::size_t> permutation(ReorderingHelper::GetPermutation(positions, topt.GetTargetPhrase().GetAlignTerm(), m_unfold_heuristic));
         // compute disttortion cost external to the phrase assuming target word order (by rearranging lattice input using word alignment information) 
-        SetExternalDistortionCostGivenWA(scores, ComputeDistortionCost(prev->GetLastCoveredGivenWA(), permutation.front()));
+        SetExternalDistortionCostGivenWA(scores, ReorderingHelper::ComputeDistortionCost(prev->GetLastCoveredGivenWA(), permutation.front()));
         
         accumulator->PlusEquals(this, scores);
-        return new PermutationDistortionState(positions.back(), permutation.back());
+        return new LatticeDistortionPenaltyState(positions.back(), permutation.back());
     } else {
         accumulator->PlusEquals(this, scores);
-        return new PermutationDistortionState(positions.back(), -1);
+        return new LatticeDistortionPenaltyState(positions.back(), -1);
     }
 }
 

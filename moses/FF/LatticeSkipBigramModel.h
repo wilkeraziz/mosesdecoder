@@ -8,15 +8,14 @@
 #include "moses/Hypothesis.h"
 #include "moses/ChartHypothesis.h"
 #include "moses/FF/FFState.h"
-#include "moses/FF/LatticePermutationFeatures.h"
 
 namespace Moses
 {
     
-class PermutationExpectedKendallTauState : public FFState
+class LatticeSkipBigramModelState : public FFState
 {
 public:
-    PermutationExpectedKendallTauState(const WordsBitmap& coverage):
+    LatticeSkipBigramModelState(const WordsBitmap& coverage):
         m_coverage(coverage)
     {}
 
@@ -27,7 +26,7 @@ public:
 
     inline int Compare(const FFState& other) const
     {
-        const PermutationExpectedKendallTauState& rhs = dynamic_cast<const PermutationExpectedKendallTauState&>(other);
+        const LatticeSkipBigramModelState& rhs = dynamic_cast<const LatticeSkipBigramModelState&>(other);
         return m_coverage.Compare(rhs.GetCoverage());
     }
     
@@ -56,7 +55,7 @@ private:
  *      2. Internal KTau
  *      3. Internal KTau Given Word Alignment
  */
-class PermutationExpectedKendallTau : public StatefulFeatureFunction
+class LatticeSkipBigramModel : public StatefulFeatureFunction
 {
 private:
     //std::size_t m_seg; // segment being translated (necessary in referring to table of permutations and expectations)
@@ -74,9 +73,10 @@ private:
     std::vector< std::map< std::size_t, std::map<std::size_t, double> > > m_taus; // table of expectations
     std::vector<std::size_t> m_lengths; // the length of each original source
     std::string m_sstate_fname;  // name of arc feature representing the state in s (original source)
+    float m_missing;
 
 public:
-  PermutationExpectedKendallTau(const std::string &line);
+  LatticeSkipBigramModel(const std::string &line);
 
   bool IsUseable(const FactorMask &mask) const {
     return true;
@@ -86,7 +86,7 @@ public:
   
   inline const FFState* EmptyHypothesisState(const InputType &input) const
   {
-      return new PermutationExpectedKendallTauState(WordsBitmap(GetInputLength(input.GetTranslationId())));
+      return new LatticeSkipBigramModelState(WordsBitmap(GetInputLength(input.GetTranslationId())));
   }
   
   // we have nothing to do here
@@ -162,7 +162,7 @@ public:
   FFState* EvaluateWhenApplied(const ChartHypothesis& hypo,
           int featureID,
           ScoreComponentCollection* accumulator) const {
-    throw std::logic_error("PermutationExpectedKendallTau not valid in chart decoder");
+    throw std::logic_error("LatticeSkipBigramModel not valid in chart decoder");
   }
 
   void SetParameter(const std::string& key, const std::string& value);
@@ -176,36 +176,6 @@ private:
     {
         return m_lengths[sid];
     }  
-    
-    /*
-     * Load a file of expectation over skip bigrams.
-     * Format: one distribution per line, each associated with an input segment.
-     *  A line contains space (or tab) separated triplets. 
-     *  A triplet (i, j, e) specifies the expectation of skip brigram <i ... j>
-     *  where i and j are 0-based positions in s. 
-     *  Within a triplet each field is separated by a pace (or a tab, or a colon). 
-     */
-    void ReadExpectations(const std::string& path);
-
-    /*
-     * Load length info about the original input sentences.
-     * This is necessary in order to instantiate a coverage vector of appropriate length.
-     * Format: one integer per line.
-     */
-    void ReadLengthInfo(const std::string& path);
-
-    /*
-     * Return the contribution of the skip bigram <left ... right> to the 
-     * expected Tau. The variables 'left' and 'right' are interpreted as 0-based positions in s.
-     * 
-     * Tip: the common way to use this method is 
-     *  GetExpectation(MapInputPosition(i), MapInputPosition(j)) 
-     * where MapInputPosition abstracts away from the type of input (original vs predicted order).
-     */
-    double GetExpectation(const std::size_t sid, const std::size_t left, const std::size_t right) const;
-
-    float ComputeExpectation(const std::size_t sid, std::vector<std::size_t> &positions) const;
-    float ComputeExpectation(const std::size_t sid, const std::vector<std::size_t>& positions, const WordsBitmap& coverage) const;
     
     /*
      * This method abstracts away the position of the feature "External KTau" in the vector of score components.

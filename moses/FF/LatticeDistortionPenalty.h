@@ -8,15 +8,38 @@
 #include "moses/Hypothesis.h"
 #include "moses/ChartHypothesis.h"
 #include "moses/FF/FFState.h"
-#include "moses/FF/LatticePermutationFeatures.h"
+#include "moses/TypeDef.h"
 
 namespace Moses
 {
-    
-class PermutationDistortionState : public FFState
+
+/*
+ * This feature computes distortion penalty correctly when the input is a lattice of permutations.
+ * The lattice must be annotated with the original positions corresponding to each arc (word).
+ *
+ * Arguments:
+ *  originalPosLabel=<string>
+ *      this is the name of the feature labelling PLF arcs which stores the original position associated with the input words labelling the arc
+ *  unfold=monotone|left|right
+ *      to permute input paths into target word-order we use alignment information within phrase pairs
+ *      when doing so we have a heuristic to deal with unaligned words, 
+ *      we can attach them to the left or to the right;
+ *      if you don't want to compute such permutations, you can use the option 'monotone' which will simply preserve the input path's word order
+ *
+ *  Features:
+ *   1. distortion cost
+ *      The usual notion of distortion cost, however, the positions associated with boundary words of phrases are translated back to original word order
+ *      by using the permutations provided in lattice
+ *   2. distortion cost internal to phrases
+ *      Note that with preordered input, a contiguous source phrase may cover a discontiguous sequence of source words (wrt the original word order).
+ *      This feature captures how much distortion we observe within phrases.
+ *   3. same as (2) but wrt the input path permuted to target word-order using word alignment information
+ *
+ */    
+class LatticeDistortionPenaltyState : public FFState
 {
 public:
-    PermutationDistortionState(const int last_covered,
+    LatticeDistortionPenaltyState(const int last_covered,
             const int last_covered_given_wa): 
         m_last_covered(last_covered),
         m_last_covered_given_wa(last_covered_given_wa) 
@@ -34,7 +57,7 @@ public:
 
     inline int Compare(const FFState& other) const
     {
-        const PermutationDistortionState& rhs = dynamic_cast<const PermutationDistortionState&>(other);
+        const LatticeDistortionPenaltyState& rhs = dynamic_cast<const LatticeDistortionPenaltyState&>(other);
         if (m_last_covered == rhs.GetLastCovered()) 
             return (m_last_covered_given_wa < rhs.GetLastCoveredGivenWA())? -1 : 1;
         else 
@@ -47,7 +70,7 @@ private:
 };
 
 
-class PermutationDistortion : public StatefulFeatureFunction
+class LatticeDistortionPenalty : public StatefulFeatureFunction
 {
 private:
     //std::size_t m_seg; // segment being translated (necessary in referring to table of permutations and expectations)
@@ -62,7 +85,7 @@ private:
     std::string m_sstate_fname;  // name of arc feature representing the state in s (original source)
 
 public:
-  PermutationDistortion(const std::string &line);
+  LatticeDistortionPenalty(const std::string &line);
 
   bool IsUseable(const FactorMask &mask) const {
     return true;
@@ -74,7 +97,7 @@ public:
   
   inline const FFState* EmptyHypothesisState(const InputType &input) const
   {
-      return new PermutationDistortionState(-1, -1);
+      return new LatticeDistortionPenaltyState(-1, -1);
   }
   
   // we have nothing to do here
@@ -119,13 +142,15 @@ public:
   FFState* EvaluateWhenApplied(const ChartHypothesis& hypo,
           int featureID,
           ScoreComponentCollection* accumulator) const {
-    throw std::logic_error("LatticeKTau not valid in chart decoder");
+      UTIL_THROW2("LatticeDistortionPenalty does not support chart-based decoding.")
   }
 
   void SetParameter(const std::string& key, const std::string& value);
   
   void InitializeForInput(InputType const& source)
   {
+        UTIL_THROW_IF2(source.GetType() != ConfusionNetworkInput,  // Moses can be so ugly some times :( how can a WordLattice be a type of ConfusionNetwork and not the other way around?
+            "LatticeDistortionPenalty only supports lattice input (for sentence input see PreorderedDistortionPenalty)");
   }
 
 private:

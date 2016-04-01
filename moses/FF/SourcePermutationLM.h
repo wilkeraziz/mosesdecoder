@@ -8,7 +8,7 @@
 #include "moses/Hypothesis.h"
 #include "moses/ChartHypothesis.h"
 #include "moses/FF/FFState.h"
-
+#include "moses/Util.h"
 #include "lm/model.hh"
 
 namespace kenlm = ::lm;
@@ -16,6 +16,21 @@ namespace kenlm = ::lm;
 namespace Moses
 {
 
+/*
+ * This feature scores source permutations by computing a language model score over some input factors.
+ * Typical uses:
+ *  1. one has a language model over gold permutations of the input
+ *  2. one has a language model over gold permutations of POS tags
+ *
+ * This feature can deal with both sentence and lattice input. It does not need access to permutation mappings, instead, 
+ * it only consults the actual factors being consumed in a given order.
+ * This is obviously a stateful feature as any other language model.
+ * The difference is that there shouldn't be as much ambiguity here as in standard target LM rescoring.
+ * Of course, this depends on how diverse the space of permutation is.
+ *
+ * Features:
+ *  1. LM score
+ */
 class SourcePermutationLMState : public FFState
 {
 public:
@@ -88,7 +103,7 @@ public:
           int featureID,
           ScoreComponentCollection* accumulator) const 
   {
-    throw std::logic_error("SourcePermutationLM does not support chart-based decoding.");
+    UTIL_THROW2("SourcePermutationLM does not support chart-based decoding.");
   }
 
 
