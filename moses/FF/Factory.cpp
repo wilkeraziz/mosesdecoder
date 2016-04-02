@@ -68,8 +68,8 @@
 #include "moses/FF/LatticeDistortionPenalty.h"
 #include "moses/FF/LatticeSkipBigramModel.h"
 #include "moses/FF/PreorderedDistortionPenalty.h"
-#include "moses/FF/SparseMorphology.h"
 #include "moses/FF/SparsePhrasePairMorphology.h"
+#include "moses/FF/SparseWordPairMorphology.h"
 
 #ifdef HAVE_VW
 #include "moses/FF/VW/VW.h"
@@ -261,8 +261,8 @@ FeatureRegistry::FeatureRegistry()
   MOSES_FNAME2("PermutationDistortion", LatticeDistortionPenalty);  // TODO: get rid of this old name
   MOSES_FNAME(LatticeSkipBigramModel); 
   MOSES_FNAME2("PermutationExpectedKendallTau", LatticeSkipBigramModel);  // TODO: get rid of this old name
-  MOSES_FNAME(SparseMorphology);
   MOSES_FNAME(SparsePhrasePairMorphology);
+  MOSES_FNAME(SparseWordPairMorphology);
 
 #ifdef HAVE_VW
   MOSES_FNAME(VW);
