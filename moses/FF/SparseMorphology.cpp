@@ -11,8 +11,14 @@ namespace Moses
   :StatelessFeatureFunction(0, line),
     m_input_factor(0),
     m_output_factor(0),
+    m_input_min_chars(0),
     m_input_max_chars(0),
+    m_output_min_chars(0),
     m_output_max_chars(0),
+    m_input_context(0),
+    m_output_context(0),
+    m_input_mode("token"),
+    m_output_mode("token"),
     m_constrained_vocab(false),
     m_ignore_prefix(false),
     m_language_separator("=>"),
@@ -33,24 +39,28 @@ void SparseMorphology::SetParameter(const std::string& key, const std::string& v
         m_input_factor = Scan<FactorType>(value);
     } else if (key == "output-factor") {
         m_output_factor = Scan<FactorType>(value);
-    } else if (key == "input-max-chars") {
-        const int tmp = Scan<int>(value);
-        if (tmp >= 0) {
-            m_input_max_chars = (std::size_t)tmp;
-            m_input_reverse = false;
-        } else {
-            m_input_max_chars = (std::size_t) -tmp;
-            m_input_reverse = true;
-        }
-    } else if (key == "output-max-chars") {
-        const int tmp = Scan<int>(value);
-        if (tmp >= 0) {
-            m_output_max_chars = (std::size_t)tmp;
-            m_output_reverse = false;
-        } else {
-            m_output_max_chars = (std::size_t) -tmp;
-            m_output_reverse = true;
-        }
+    } else if (key == "input-min") {
+        m_input_min_chars = Scan<std::size_t>(value);
+    } else if (key == "input-max") {
+        m_input_max_chars = Scan<std::size_t>(value);
+    } else if (key == "input-context") {
+        m_input_context = Scan<std::size_t>(value);
+    } else if (key == "input-mode") {
+        UTIL_THROW_IF2(value != "token" && value != "prefix" && value != "suffix", "Unknown option for input-mode=token|prefix|suffix: " + value);
+        m_input_mode = Scan<std::string>(value);
+    } else if (key == "input-short-token-placeholder") {
+        m_input_placeholder = value;
+    } else if (key == "output-short-token-placeholder") {
+        m_output_placeholder = value;
+    } else if (key == "output-min") {
+        m_output_min_chars = Scan<std::size_t>(value);
+    } else if (key == "output-max") {
+        m_output_max_chars = Scan<std::size_t>(value);
+    } else if (key == "output-context") {
+        m_output_context = Scan<std::size_t>(value);
+    } else if (key == "output-mode") {
+        UTIL_THROW_IF2(value != "token" && value != "prefix" && value != "suffix", "Unknown option for output-mode=token|prefix|suffix: " + value);
+        m_output_mode = Scan<std::string>(value);
     } else if (key == "feature-vocab") {
         UTIL_THROW_IF2(!FileExists(value), "Vocabulary of features not found: " + value);
         m_vocab_path = value;
@@ -77,6 +87,9 @@ void SparseMorphology::SetParameter(const std::string& key, const std::string& v
     } else {
         StatelessFeatureFunction::SetParameter(key, value);
     }
+
+    m_input_reverse = m_input_mode == "suffix";
+    m_output_reverse = m_output_mode == "suffix";
 }
 
 void SparseMorphology::Load() 
@@ -134,26 +147,74 @@ bool SparseMorphology::FireFeature(ScoreComponentCollection& scores, const std::
 }
 
  
-StringPiece SparseMorphology::GetPiece(const Word& word, const FactorType factor, const std::size_t size, bool reverse)
+StringPiece SparseMorphology::GetPiece(const Word& word, const FactorType factor, 
+        const std::size_t size, 
+        const std::size_t context,
+        const bool reverse,
+        const StringPiece& placeholder)
 {
     const StringPiece piece = word.GetString(factor);
-    if (size == 0) // whole word
-        return piece;
-    else if (reverse) { // suffix
-        const std::size_t start = (piece.size() > size)? piece.size() - size : 0;
-        return piece.substr(start, size);
-    } else {  // prefix
-        return piece.substr(0, size);
+    if (size == 0) { // whole word
+        if (piece.size() >= context)  
+            return piece;
+        if (placeholder.empty())  // the word doesnt meet the minimum requirements, but we were given an empty placeholder
+            return piece;
+        return placeholder;  
+    } 
+    if (piece.size() >= size + context) {
+        if (reverse) { // suffix
+            return piece.substr(piece.size() - size, size);
+        } else {  // prefix
+            return piece.substr(0, size);
+        }
+    } else { // not enough chars
+        if (placeholder.empty())  // with an empty placeholder, we return the token
+            return piece;
+        return placeholder;
     }
+        
 }
 
-std::vector<StringPiece> SparseMorphology::GetPieces(const Phrase& phrase, const FactorType factor, const std::size_t size, bool reverse)
+std::vector<StringPiece> SparseMorphology::GetPieces(const Phrase& phrase, 
+        const FactorType factor, 
+        const std::size_t size, 
+        const std::size_t context, 
+        const bool reverse, 
+        const StringPiece& placeholder)
 {
-    std::vector<StringPiece> pieces(phrase.GetSize());
+    std::vector<StringPiece> pieces;
+    pieces.reserve(phrase.GetSize());
     for (std::size_t i = 0; i < phrase.GetSize(); ++i) {
-        pieces[i] = SparseMorphology::GetPiece(phrase.GetWord(i), factor, size, reverse);
+        pieces.push_back(SparseMorphology::GetPiece(phrase.GetWord(i), factor, size, context, reverse, placeholder));
     }
     return pieces;
+}
+
+void SparseMorphology::GetPieces(const Phrase& phrase, const FactorType& factor, const std::string& mode,
+        const std::size_t min, const std::size_t max, const std::size_t context,
+        const bool reverse,
+        const StringPiece& placeholder,
+        std::vector< std::vector<StringPiece> >& pieces)
+{
+    pieces.clear();
+    if (mode == "token") { 
+        pieces.push_back(GetPieces(phrase, 
+                    factor, 
+                    0, // that's how we select all chars
+                    context, // we still require a minimum length
+                    reverse, 
+                    placeholder));
+    }
+    else {
+        for (std::size_t size = min; size <= max; ++size) {
+            pieces.push_back(GetPieces(phrase, 
+                        factor, 
+                        size, 
+                        context, 
+                        reverse, 
+                        placeholder));
+        }
+    }
 }
 
 }
