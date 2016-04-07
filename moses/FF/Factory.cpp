@@ -70,6 +70,7 @@
 #include "moses/FF/PreorderedDistortionPenalty.h"
 #include "moses/FF/SparsePhrasePairMorphology.h"
 #include "moses/FF/SparseWordPairMorphology.h"
+#include "moses/LM/ClassKenLM.h"
 
 #ifdef HAVE_VW
 #include "moses/FF/VW/VW.h"
@@ -183,6 +184,14 @@ public:
   }
 };
 
+class ClassKenLMFactory : public FeatureFactory
+{
+public:
+  void Create(const std::string &line) {
+    DefaultSetup(ConstructClassKenLM(line));
+  }
+};
+
 } // namespace
 
 FeatureRegistry::FeatureRegistry()
@@ -263,6 +272,7 @@ FeatureRegistry::FeatureRegistry()
   MOSES_FNAME2("PermutationExpectedKendallTau", LatticeSkipBigramModel);  // TODO: get rid of this old name
   MOSES_FNAME(SparsePhrasePairMorphology);
   MOSES_FNAME(SparseWordPairMorphology);
+  Add("ClassKenLM", new ClassKenLMFactory());
 
 #ifdef HAVE_VW
   MOSES_FNAME(VW);
